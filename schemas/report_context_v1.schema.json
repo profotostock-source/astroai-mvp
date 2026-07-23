@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "report_context_v1.schema.json",
+  "title": "Inner Compass AI Report Context v1",
+  "type": "object",
+  "required": ["schema_version", "report", "person", "chart_summary", "facts"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "report": {
+      "type": "object",
+      "required": ["report_id", "language", "report_type", "created_at"],
+      "properties": {
+        "report_id": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "enum": ["uk"]},
+        "report_type": {"type": "string", "const": "personality"},
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "person": {
+      "type": "object",
+      "required": ["name", "birth_date", "birth_time", "birth_place"],
+      "properties": {
+        "name": {"type": ["string", "null"]},
+        "birth_date": {"type": ["string", "null"]},
+        "birth_time": {"type": ["string", "null"]},
+        "birth_place": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "chart_summary": {
+      "type": "object",
+      "required": ["sun_sign", "moon_sign", "ascendant_sign", "birth_time_known"],
+      "properties": {
+        "sun_sign": {"type": ["string", "null"]},
+        "moon_sign": {"type": ["string", "null"]},
+        "ascendant_sign": {"type": ["string", "null"]},
+        "birth_time_known": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "facts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "category", "confidence", "statement", "evidence", "writer_guidance"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "title": {"type": "string", "minLength": 1},
+          "category": {
+            "type": "string",
+            "enum": ["identity", "emotional_needs", "thinking", "communication", "relationships", "decision_making", "stress_response"]
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "statement": {"type": "string", "minLength": 1},
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["factor", "placement", "rule_id", "weight"],
+              "properties": {
+                "factor": {"type": "string"},
+                "placement": {"type": "string"},
+                "rule_id": {"type": "string"},
+                "weight": {"type": "number", "minimum": 0, "maximum": 1}
+              },
+              "additionalProperties": false
+            }
+          },
+          "writer_guidance": {
+            "type": "object",
+            "required": ["include", "priority", "avoid_absolute_language"],
+            "properties": {
+              "include": {"type": "boolean"},
+              "priority": {"type": "integer", "minimum": 1, "maximum": 3},
+              "avoid_absolute_language": {"type": "boolean"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

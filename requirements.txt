@@ -1,0 +1,6 @@
+python-dotenv
+kerykeion
+python-telegram-bot
+openai
+reportlab
+requests
