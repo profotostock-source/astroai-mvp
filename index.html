@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inner Compass — Персональний психологічний звіт</title>
+  <meta name="description" content="Дізнайся, хто ти насправді. Персональний психологічний звіт на основі натальної карти — через Telegram за 3 хвилини." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:      #FAF6F0;
+      --cream-dark: #F0E8DA;
+      --gold:       #C9A76B;
+      --gold-dark:  #A8854A;
+      --brown:      #6B3F26;
+      --text:       #231C2E;
+      --muted:      #7B6B8A;
+      --highlight:  #FEF3E2;
+      --divider:    #D9C4A8;
+      --white:      #FFFFFF;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      background: var(--cream);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 40px;
+      background: rgba(250,246,240,0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--divider);
+    }
+    .nav-brand {
+      font-size: 15px; font-weight: bold; letter-spacing: 2px;
+      color: var(--brown); text-decoration: none;
+    }
+    .nav-cta {
+      background: var(--gold); color: var(--white);
+      padding: 9px 22px; border-radius: 50px;
+      font-size: 14px; font-family: sans-serif;
+      text-decoration: none; font-weight: 600;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: var(--gold-dark); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; top: -120px; right: -120px;
+      width: 480px; height: 480px;
+      border-radius: 50%;
+      background: var(--cream-dark);
+      z-index: 0;
+    }
+    .hero::after {
+      content: '';
+      position: absolute; bottom: -80px; left: -80px;
+      width: 340px; height: 340px;
+      border-radius: 50%;
+      background: var(--cream-dark);
+      z-index: 0;
+    }
+    .hero > * { position: relative; z-index: 1; }
+
+    .hero-label {
+      display: inline-block;
+      background: var(--highlight);
+      border: 1px solid var(--gold);
+      color: var(--brown);
+      font-size: 13px; font-family: sans-serif;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      padding: 6px 18px; border-radius: 50px;
+      margin-bottom: 32px;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 64px);
+      line-height: 1.2;
+      color: var(--brown);
+      max-width: 720px;
+      margin-bottom: 24px;
+    }
+    .hero h1 em { color: var(--gold); font-style: normal; }
+    .hero p {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--muted);
+      max-width: 560px;
+      margin-bottom: 40px;
+    }
+    .btn-primary {
+      display: inline-block;
+      background: var(--brown);
+      color: var(--white);
+      padding: 16px 40px; border-radius: 50px;
+      font-size: 16px; font-family: sans-serif; font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 4px 20px rgba(107,63,38,0.25);
+    }
+    .btn-primary:hover { background: #4E2E1A; transform: translateY(-2px); }
+    .hero-sub {
+      margin-top: 20px;
+      font-size: 13px; font-family: sans-serif;
+      color: var(--muted);
+    }
+
+    /* ── SECTION SHARED ── */
+    section { padding: 80px 24px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .section-label {
+      font-size: 12px; font-family: sans-serif;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(26px, 4vw, 40px);
+      color: var(--brown); margin-bottom: 16px;
+      line-height: 1.25;
+    }
+    .section-sub {
+      font-size: 17px; color: var(--muted);
+      max-width: 580px; margin-bottom: 56px;
+    }
+    .gold-line {
+      width: 48px; height: 2px;
+      background: var(--gold);
+      margin: 16px 0 48px;
+    }
+    .gold-line.center { margin: 16px auto 48px; }
+
+    /* ── PROBLEM ── */
+    .problem { background: var(--cream-dark); }
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px; margin-top: 48px;
+    }
+    .problem-card {
+      background: var(--cream);
+      border: 1px solid var(--divider);
+      border-radius: 16px;
+      padding: 28px 24px;
+    }
+    .problem-card .icon { font-size: 28px; margin-bottom: 14px; }
+    .problem-card h3 {
+      font-size: 17px; color: var(--brown);
+      margin-bottom: 10px;
+    }
+    .problem-card p { font-size: 15px; color: var(--muted); line-height: 1.6; }
+
+    /* ── HOW IT WORKS ── */
+    .steps {
+      display: flex; flex-direction: column; gap: 0;
+      margin-top: 8px;
+    }
+    .step {
+      display: flex; gap: 28px; align-items: flex-start;
+      padding: 32px 0;
+      border-bottom: 1px solid var(--divider);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num {
+      flex-shrink: 0;
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: var(--highlight);
+      border: 2px solid var(--gold);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: bold; color: var(--brown);
+      font-family: sans-serif;
+    }
+    .step-content h3 {
+      font-size: 19px; color: var(--brown); margin-bottom: 8px;
+    }
+    .step-content p { font-size: 16px; color: var(--muted); }
+
+    /* ── WHAT'S INSIDE ── */
+    .inside { background: var(--cream-dark); }
+    .inside-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px; margin-top: 8px;
+    }
+    .inside-card {
+      background: var(--cream);
+      border-left: 3px solid var(--gold);
+      border-radius: 0 12px 12px 0;
+      padding: 22px 20px;
+    }
+    .inside-card h3 { font-size: 16px; color: var(--brown); margin-bottom: 8px; }
+    .inside-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    /* ── QUOTE ── */
+    .quote-section { text-align: center; padding: 80px 24px; }
+    blockquote {
+      max-width: 660px; margin: 0 auto;
+      font-size: clamp(20px, 3vw, 28px);
+      line-height: 1.5;
+      color: var(--brown);
+      font-style: italic;
+      position: relative;
+      padding: 0 32px;
+    }
+    blockquote::before {
+      content: '\201C';
+      position: absolute; left: 0; top: -12px;
+      font-size: 72px; color: var(--gold);
+      line-height: 1; font-style: normal;
+    }
+    .quote-attr {
+      display: block; margin-top: 24px;
+      font-size: 14px; font-family: sans-serif;
+      color: var(--muted); font-style: normal;
+    }
+
+    /* ── FOR WHO ── */
+    .forwho-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px; margin-top: 8px;
+    }
+    .forwho-item {
+      display: flex; align-items: flex-start; gap: 14px;
+      background: var(--highlight);
+      border-radius: 12px; padding: 18px 20px;
+    }
+    .forwho-item .check {
+      flex-shrink: 0; width: 24px; height: 24px;
+      background: var(--gold); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 13px; font-family: sans-serif;
+      margin-top: 2px;
+    }
+    .forwho-item p { font-size: 15px; color: var(--text); line-height: 1.5; }
+
+    /* ── FAQ ── */
+    .faq { background: var(--cream-dark); }
+    .faq-list { margin-top: 8px; }
+    details {
+      border-bottom: 1px solid var(--divider);
+      padding: 20px 0;
+    }
+    details:first-child { border-top: 1px solid var(--divider); }
+    summary {
+      font-size: 17px; color: var(--brown);
+      cursor: pointer; list-style: none;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after {
+      content: '+'; font-size: 22px; color: var(--gold);
+      font-family: sans-serif; transition: transform 0.2s;
+    }
+    details[open] summary::after { transform: rotate(45deg); }
+    .faq-answer {
+      margin-top: 14px; font-size: 15px;
+      color: var(--muted); line-height: 1.7;
+    }
+
+    /* ── CTA BOTTOM ── */
+    .cta-bottom {
+      text-align: center;
+      background: var(--brown);
+      color: var(--white);
+      padding: 100px 24px;
+    }
+    .cta-bottom h2 {
+      font-size: clamp(28px, 4vw, 44px);
+      margin-bottom: 16px;
+      line-height: 1.2;
+    }
+    .cta-bottom h2 em { color: var(--gold); font-style: normal; }
+    .cta-bottom p {
+      font-size: 17px; opacity: 0.75;
+      max-width: 480px; margin: 0 auto 40px;
+    }
+    .btn-light {
+      display: inline-block;
+      background: var(--gold); color: var(--white);
+      padding: 16px 44px; border-radius: 50px;
+      font-size: 16px; font-family: sans-serif; font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 4px 24px rgba(201,167,107,0.4);
+    }
+    .btn-light:hover { background: var(--gold-dark); transform: translateY(-2px); }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center; padding: 32px 24px;
+      font-size: 13px; font-family: sans-serif;
+      color: var(--muted);
+      border-top: 1px solid var(--divider);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      nav { padding: 14px 20px; }
+      .step { flex-direction: column; gap: 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-brand" href="#">INNER COMPASS</a>
+  <a class="nav-cta" href="https://t.me/inner_compass_report_bot" target="_blank">Спробувати безкоштовно</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <span class="hero-label">Психологія · Астрологія · Саморозуміння</span>
+  <h1>Дізнайся, <em>хто ти є</em><br>насправді</h1>
+  <p>Персональний психологічний звіт на основі натальної карти. Не гороскоп — а глибокий аналіз твоїх сильних сторін, сліпих зон і справжніх потреб.</p>
+  <a class="btn-primary" href="https://t.me/inner_compass_report_bot" target="_blank">Отримати свій звіт →</a>
+  <p class="hero-sub">Безкоштовно · Через Telegram · PDF за 3 хвилини</p>
+</section>
+
+<!-- PROBLEM -->
+<section class="problem">
+  <div class="container">
+    <p class="section-label">Проблема</p>
+    <h2 class="section-title">Знак зодіаку — це лише 1% картини</h2>
+    <div class="gold-line"></div>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="icon">🔍</div>
+        <h3>Поверхневі описи</h3>
+        <p>Звичайні гороскопи дають загальні фрази, які підходять будь-кому. Це не про тебе.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">🤯</div>
+        <h3>Складна астрологія</h3>
+        <p>Натальна карта — потужний інструмент, але без інтерпретації вона залишається набором символів.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">💸</div>
+        <h3>Дорогі консультації</h3>
+        <p>Персональна сесія з астрологом коштує сотні гривень і потребує запису за тиждень наперед.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section>
+  <div class="container">
+    <p class="section-label">Як це працює</p>
+    <h2 class="section-title">Три кроки до свого звіту</h2>
+    <div class="gold-line"></div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>Запусти бот у Telegram</h3>
+          <p>Натисни /start — і бот привітає тебе. Жодної реєстрації, пошти чи паролів.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>Введи дату, час і місце народження</h3>
+          <p>Чим точніший час — тим глибший аналіз. Але навіть без часу звіт буде цінним.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h3>Отримай персональний PDF-звіт</h3>
+          <p>За кілька хвилин бот надішле тобі готовий звіт, який можна зберегти і перечитувати.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT'S INSIDE -->
+<section class="inside">
+  <div class="container">
+    <p class="section-label">Що всередині</p>
+    <h2 class="section-title">Що є у твоєму звіті</h2>
+    <div class="gold-line"></div>
+    <div class="inside-grid">
+      <div class="inside-card">
+        <h3>Психологічний портрет</h3>
+        <p>Хто ти є — з огляду на Сонце, Місяць і Асцендент. Не ярлик, а живий опис.</p>
+      </div>
+      <div class="inside-card">
+        <h3>Сильні сторони</h3>
+        <p>Природні таланти та ресурси, на які ти можеш спиратись у будь-якій ситуації.</p>
+      </div>
+      <div class="inside-card">
+        <h3>Сліпі зони</h3>
+        <p>Де ти ризикуєш саботувати себе — і як це помітити раніше, ніж стане проблемою.</p>
+      </div>
+      <div class="inside-card">
+        <h3>Емоційні потреби</h3>
+        <p>Що тобі насправді потрібно для відчуття стабільності, безпеки і наповненості.</p>
+      </div>
+      <div class="inside-card">
+        <h3>Стиль спілкування</h3>
+        <p>Як ти будуєш стосунки, що допомагає і заважає тобі в контакті з іншими.</p>
+      </div>
+      <div class="inside-card">
+        <h3>Практичні рекомендації</h3>
+        <p>Конкретні підказки — що спробувати вже сьогодні, щоб жити більш усвідомлено.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- QUOTE -->
+<section class="quote-section">
+  <blockquote>
+    Найважливіший момент — коли людина читає звіт і каже: «Це точно про мене. Як ви це знали?»
+    <span class="quote-attr">— Inner Compass</span>
+  </blockquote>
+</section>
+
+<!-- FOR WHO -->
+<section>
+  <div class="container">
+    <p class="section-label">Для кого</p>
+    <h2 class="section-title">Тобі сюди, якщо ти...</h2>
+    <div class="gold-line"></div>
+    <div class="forwho-list">
+      <div class="forwho-item">
+        <div class="check">✓</div>
+        <p>Хочеш краще розуміти свої реакції, звички та внутрішні конфлікти</p>
+      </div>
+      <div class="forwho-item">
+        <div class="check">✓</div>
+        <p>Проходиш через важливий вибір і шукаєш ясності та опори</p>
+      </div>
+      <div class="forwho-item">
+        <div class="check">✓</div>
+        <p>Хочеш зрозуміти свої сильні сторони і почати спиратися на них</p>
+      </div>
+      <div class="forwho-item">
+        <div class="check">✓</div>
+        <p>Цікавишся психологією та саморозвитком, але хочеш чогось особистого</p>
+      </div>
+      <div class="forwho-item">
+        <div class="check">✓</div>
+        <p>Вже знаєш свій знак зодіаку, але відчуваєш, що картина неповна</p>
+      </div>
+      <div class="forwho-item">
+        <div class="check">✓</div>
+        <p>Шукаєш підтримку саморефлексії — без довгих курсів і великих інвестицій</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq">
+  <div class="container">
+    <p class="section-label">Питання</p>
+    <h2 class="section-title">Часті запитання</h2>
+    <div class="gold-line"></div>
+    <div class="faq-list">
+      <details>
+        <summary>Це астрологія чи психологія?</summary>
+        <p class="faq-answer">Обидва. Натальна карта — це символічний інструмент. Inner Compass використовує її як структуру для психологічного аналізу. GPT пише текст на основі фактичних даних карти — без вигадок і загальних фраз.</p>
+      </details>
+      <details>
+        <summary>Чи потрібен точний час народження?</summary>
+        <p class="faq-answer">Бажано, але не обов'язково. Без часу Асцендент не розраховується, але Сонце, Місяць та інші планети дадуть повноцінний аналіз.</p>
+      </details>
+      <details>
+        <summary>Скільки часу займає генерація звіту?</summary>
+        <p class="faq-answer">Зазвичай 1–3 хвилини. Бот розраховує карту, будує контекст і генерує персональний текст через GPT.</p>
+      </details>
+      <details>
+        <summary>Звіт справді персональний?</summary>
+        <p class="faq-answer">Так. Кожен звіт генерується індивідуально на основі твоїх точних астрологічних даних. Ніяких шаблонів — тільки твоя карта.</p>
+      </details>
+      <details>
+        <summary>Це безкоштовно?</summary>
+        <p class="faq-answer">Так, зараз Inner Compass у відкритому бета-тестуванні. Звіт можна отримати безкоштовно.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BOTTOM -->
+<section class="cta-bottom">
+  <h2>Готовий дізнатись<br>більше про <em>себе</em>?</h2>
+  <p>Запусти бот у Telegram і отримай свій персональний звіт вже зараз.</p>
+  <a class="btn-light" href="https://t.me/inner_compass_report_bot" target="_blank">Відкрити Inner Compass →</a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>© 2026 Inner Compass · Для саморефлексії та особистого розвитку<br>
+  Звіт не є медичною або психологічною рекомендацією</p>
+</footer>
+
+</body>
+</html>
