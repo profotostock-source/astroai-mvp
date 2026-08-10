@@ -30,7 +30,6 @@
       line-height: 1.7;
     }
 
-    /* ── NAV ── */
     nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
@@ -52,7 +51,6 @@
     }
     .nav-cta:hover { background: var(--gold-dark); }
 
-    /* ── HERO ── */
     .hero {
       min-height: 100vh;
       display: flex; flex-direction: column;
@@ -120,7 +118,6 @@
       color: var(--muted);
     }
 
-    /* ── SECTION SHARED ── */
     section { padding: 80px 24px; }
     .container { max-width: 900px; margin: 0 auto; }
     .section-label {
@@ -133,18 +130,12 @@
       color: var(--brown); margin-bottom: 16px;
       line-height: 1.25;
     }
-    .section-sub {
-      font-size: 17px; color: var(--muted);
-      max-width: 580px; margin-bottom: 56px;
-    }
     .gold-line {
       width: 48px; height: 2px;
       background: var(--gold);
       margin: 16px 0 48px;
     }
-    .gold-line.center { margin: 16px auto 48px; }
 
-    /* ── PROBLEM ── */
     .problem { background: var(--cream-dark); }
     .problem-grid {
       display: grid;
@@ -158,17 +149,10 @@
       padding: 28px 24px;
     }
     .problem-card .icon { font-size: 28px; margin-bottom: 14px; }
-    .problem-card h3 {
-      font-size: 17px; color: var(--brown);
-      margin-bottom: 10px;
-    }
+    .problem-card h3 { font-size: 17px; color: var(--brown); margin-bottom: 10px; }
     .problem-card p { font-size: 15px; color: var(--muted); line-height: 1.6; }
 
-    /* ── HOW IT WORKS ── */
-    .steps {
-      display: flex; flex-direction: column; gap: 0;
-      margin-top: 8px;
-    }
+    .steps { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
     .step {
       display: flex; gap: 28px; align-items: flex-start;
       padding: 32px 0;
@@ -185,12 +169,9 @@
       font-size: 18px; font-weight: bold; color: var(--brown);
       font-family: sans-serif;
     }
-    .step-content h3 {
-      font-size: 19px; color: var(--brown); margin-bottom: 8px;
-    }
+    .step-content h3 { font-size: 19px; color: var(--brown); margin-bottom: 8px; }
     .step-content p { font-size: 16px; color: var(--muted); }
 
-    /* ── WHAT'S INSIDE ── */
     .inside { background: var(--cream-dark); }
     .inside-grid {
       display: grid;
@@ -206,7 +187,6 @@
     .inside-card h3 { font-size: 16px; color: var(--brown); margin-bottom: 8px; }
     .inside-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
 
-    /* ── QUOTE ── */
     .quote-section { text-align: center; padding: 80px 24px; }
     blockquote {
       max-width: 660px; margin: 0 auto;
@@ -229,7 +209,6 @@
       color: var(--muted); font-style: normal;
     }
 
-    /* ── FOR WHO ── */
     .forwho-list {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -249,13 +228,8 @@
     }
     .forwho-item p { font-size: 15px; color: var(--text); line-height: 1.5; }
 
-    /* ── FAQ ── */
     .faq { background: var(--cream-dark); }
-    .faq-list { margin-top: 8px; }
-    details {
-      border-bottom: 1px solid var(--divider);
-      padding: 20px 0;
-    }
+    details { border-bottom: 1px solid var(--divider); padding: 20px 0; }
     details:first-child { border-top: 1px solid var(--divider); }
     summary {
       font-size: 17px; color: var(--brown);
@@ -263,33 +237,19 @@
       display: flex; justify-content: space-between; align-items: center;
     }
     summary::-webkit-details-marker { display: none; }
-    summary::after {
-      content: '+'; font-size: 22px; color: var(--gold);
-      font-family: sans-serif; transition: transform 0.2s;
-    }
-    details[open] summary::after { transform: rotate(45deg); }
-    .faq-answer {
-      margin-top: 14px; font-size: 15px;
-      color: var(--muted); line-height: 1.7;
-    }
+    summary::after { content: '+'; font-size: 22px; color: var(--gold); font-family: sans-serif; }
+    details[open] summary::after { content: '×'; }
+    .faq-answer { margin-top: 14px; font-size: 15px; color: var(--muted); line-height: 1.7; }
 
-    /* ── CTA BOTTOM ── */
     .cta-bottom {
       text-align: center;
       background: var(--brown);
       color: var(--white);
       padding: 100px 24px;
     }
-    .cta-bottom h2 {
-      font-size: clamp(28px, 4vw, 44px);
-      margin-bottom: 16px;
-      line-height: 1.2;
-    }
+    .cta-bottom h2 { font-size: clamp(28px, 4vw, 44px); margin-bottom: 16px; line-height: 1.2; }
     .cta-bottom h2 em { color: var(--gold); font-style: normal; }
-    .cta-bottom p {
-      font-size: 17px; opacity: 0.75;
-      max-width: 480px; margin: 0 auto 40px;
-    }
+    .cta-bottom p { font-size: 17px; opacity: 0.75; max-width: 480px; margin: 0 auto 40px; }
     .btn-light {
       display: inline-block;
       background: var(--gold); color: var(--white);
@@ -301,7 +261,6 @@
     }
     .btn-light:hover { background: var(--gold-dark); transform: translateY(-2px); }
 
-    /* ── FOOTER ── */
     footer {
       text-align: center; padding: 32px 24px;
       font-size: 13px; font-family: sans-serif;
@@ -309,7 +268,6 @@
       border-top: 1px solid var(--divider);
     }
 
-    /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
       nav { padding: 14px 20px; }
       .step { flex-direction: column; gap: 14px; }
@@ -318,13 +276,11 @@
 </head>
 <body>
 
-<!-- NAV -->
 <nav>
   <a class="nav-brand" href="#">INNER COMPASS</a>
   <a class="nav-cta" href="https://t.me/inner_compass_report_bot" target="_blank">Спробувати безкоштовно</a>
 </nav>
 
-<!-- HERO -->
 <section class="hero">
   <span class="hero-label">Психологія · Астрологія · Саморозуміння</span>
   <h1>Дізнайся, <em>хто ти є</em><br>насправді</h1>
@@ -333,7 +289,6 @@
   <p class="hero-sub">Безкоштовно · Через Telegram · PDF за 3 хвилини</p>
 </section>
 
-<!-- PROBLEM -->
 <section class="problem">
   <div class="container">
     <p class="section-label">Проблема</p>
@@ -359,7 +314,6 @@
   </div>
 </section>
 
-<!-- HOW IT WORKS -->
 <section>
   <div class="container">
     <p class="section-label">Як це працює</p>
@@ -391,7 +345,6 @@
   </div>
 </section>
 
-<!-- WHAT'S INSIDE -->
 <section class="inside">
   <div class="container">
     <p class="section-label">Що всередині</p>
@@ -426,7 +379,6 @@
   </div>
 </section>
 
-<!-- QUOTE -->
 <section class="quote-section">
   <blockquote>
     Найважливіший момент — коли людина читає звіт і каже: «Це точно про мене. Як ви це знали?»
@@ -434,7 +386,6 @@
   </blockquote>
 </section>
 
-<!-- FOR WHO -->
 <section>
   <div class="container">
     <p class="section-label">Для кого</p>
@@ -469,7 +420,6 @@
   </div>
 </section>
 
-<!-- FAQ -->
 <section class="faq">
   <div class="container">
     <p class="section-label">Питання</p>
@@ -500,14 +450,12 @@
   </div>
 </section>
 
-<!-- CTA BOTTOM -->
 <section class="cta-bottom">
   <h2>Готовий дізнатись<br>більше про <em>себе</em>?</h2>
   <p>Запусти бот у Telegram і отримай свій персональний звіт вже зараз.</p>
   <a class="btn-light" href="https://t.me/inner_compass_report_bot" target="_blank">Відкрити Inner Compass →</a>
 </section>
 
-<!-- FOOTER -->
 <footer>
   <p>© 2026 Inner Compass · Для саморефлексії та особистого розвитку<br>
   Звіт не є медичною або психологічною рекомендацією</p>
