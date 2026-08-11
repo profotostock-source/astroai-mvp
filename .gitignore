@@ -5,6 +5,7 @@ data/*.db
 data/*.sqlite
 cache/*.sqlite
 reports/*.pdf
+*.pdf
 __pycache__/
 *.pyc
 *.pyo
