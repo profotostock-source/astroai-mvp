@@ -2,13 +2,16 @@ import os
 import re
 import logging
 from datetime import date, datetime
+from pathlib import Path
 
 import config
 from database import get_user_profile, init_db, upsert_user_profile
 from services.astrology import AstrologyError, calculate_natal_chart
-from services.pdf import PDFGenerationError, generate_report
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from services.pdf_report import PDFGenerationError, generate_report
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatAction
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
@@ -18,9 +21,16 @@ from telegram.ext import (
     filters,
 )
 
+LOG_PATH = Path(__file__).resolve().parent / "bot.log"
+
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(),
+        # Console history is easy to lose; keep a durable copy for debugging.
+        logging.FileHandler(LOG_PATH, encoding="utf-8"),
+    ],
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -164,13 +174,22 @@ async def get_birth_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["birth_time"] = birth_time
 
     await update.message.reply_text(
-        "🌍 Будь ласка, введіть місто та країну народження."
+        "🌍 Будь ласка, введіть місто та країну народження.\n\n"
+        "Наприклад: Одеса, Україна"
     )
     return BIRTH_CITY
 
 
 async def get_birth_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    LOGGER.info("HANDLER get_birth_city reached")
     birth_city = normalize_spaces(update.message.text)
+
+    if "," not in birth_city:
+        await update.message.reply_text(
+            "Будь ласка, вкажіть також країну.\n"
+            "Наприклад: Татарбунари, Україна"
+        )
+        return BIRTH_CITY
 
     if not is_valid_birth_place(birth_city):
         await update.message.reply_text(
@@ -181,11 +200,24 @@ async def get_birth_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["birth_city"] = birth_city
 
     data = context.user_data
+    summary_text = build_summary_text(data)
+    confirmation_keyboard = get_confirmation_keyboard()
 
-    await update.message.reply_text(
-        build_summary_text(data),
-        reply_markup=get_confirmation_keyboard(),
-    )
+    LOGGER.info("Birthplace confirmation summary text: %s", summary_text)
+    LOGGER.info("Birthplace confirmation keyboard: %r", confirmation_keyboard)
+
+    try:
+        await update.message.reply_text(
+            summary_text,
+            reply_markup=confirmation_keyboard,
+        )
+    except Exception:
+        LOGGER.exception("Failed to send birthplace confirmation message")
+        try:
+            await update.message.reply_text(summary_text)
+        except Exception:
+            LOGGER.exception("Fallback confirmation send also failed")
+        return BIRTH_CITY
 
     return CONFIRMATION
 
@@ -214,9 +246,10 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
             return CONFIRMATION
 
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            "Дані збережено. Наступним кроком ми створимо ваш персональний звіт."
-        )
+        await query.message.reply_text("✅ Дані збережено.")
+
+        context.user_data.clear()
+        await deliver_report(query.message, user, context)
         return ConversationHandler.END
 
     context.user_data.clear()
@@ -230,10 +263,23 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
     await update.message.reply_text(
         "Створення звіту скасовано. Щоб почати знову, введіть /start."
     )
     return ConversationHandler.END
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Ось що я вмію:\n\n"
+        "/start — заповнити анкету й отримати звіт\n"
+        "/report — згенерувати звіт за збереженими даними\n"
+        "/profile — переглянути збережені дані\n"
+        "/cancel — скасувати заповнення анкети\n"
+        "/help — це повідомлення\n\n"
+        "Якщо щось пішло не так — просто надішліть /start ще раз."
+    )
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -263,43 +309,46 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Build and send the PDF report.
 
+    Takes a plain message object rather than an Update so it can be called both
+    from the /report command and from the inline confirmation callback, where
+    update.message is None.
+    """
     try:
         saved_profile = get_user_profile(user.id)
     except Exception:
         LOGGER.exception("Failed to load profile for report for Telegram user %s", user.id)
-        await update.message.reply_text(
+        await message.reply_text(
             "Наразі не вдалося підготувати ваш звіт. Будь ласка, спробуйте трохи пізніше."
         )
         return
 
     if not saved_profile:
-        await update.message.reply_text(
+        await message.reply_text(
             "Профіль ще не збережено. Будь ласка, скористайтеся /start, щоб заповнити анкету."
         )
         return
 
+    # Chart calculation plus the AI call and PDF build take a while; without
+    # this the bot looks frozen.
+    notice = await message.reply_text(
+        "⏳ Готую ваш звіт. Це займе до хвилини."
+    )
+    await context.bot.send_chat_action(chat_id=message.chat_id, action=ChatAction.UPLOAD_DOCUMENT)
+
     try:
         astrology_data = calculate_natal_chart(saved_profile)
-    except AstrologyError as error:
-        import traceback
-
-        print("=" * 80)
-        print("ASTROLOGY ERROR")
-        print("Exception type:", type(error).__name__)
-        print("Exception message:", str(error))
-        traceback.print_exc()
-        print("=" * 80)
-
-        await update.message.reply_text(
+    except AstrologyError:
+        LOGGER.exception("Natal chart calculation failed for Telegram user %s", user.id)
+        await notice.edit_text(
             "Не вдалося розрахувати натальну карту. Перевірте, будь ласка, місце, дату та час народження."
         )
         return
     except Exception:
         LOGGER.exception("Unexpected astrology error for Telegram user %s", user.id)
-        await update.message.reply_text(
+        await notice.edit_text(
             "Наразі не вдалося розрахувати натальну карту. Будь ласка, спробуйте трохи пізніше."
         )
         return
@@ -308,23 +357,106 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_path = generate_report(saved_profile, user.id, astrology_data)
     except PDFGenerationError:
         LOGGER.exception("Failed to generate report for Telegram user %s", user.id)
-        await update.message.reply_text(
+        await notice.edit_text(
             "Наразі не вдалося створити PDF-звіт. Будь ласка, спробуйте трохи пізніше."
         )
         return
     except Exception:
         LOGGER.exception("Unexpected report error for Telegram user %s", user.id)
-        await update.message.reply_text(
+        await notice.edit_text(
             "Наразі не вдалося створити PDF-звіт. Будь ласка, спробуйте трохи пізніше."
         )
         return
 
-    with open(report_path, "rb") as report_file:
-        await update.message.reply_document(
-            document=report_file,
-            filename=report_path.name,
-            caption="Ваш демонстраційний звіт готовий.",
+    try:
+        report_exists = report_path.exists()
+        report_size = report_path.stat().st_size if report_exists else None
+        LOGGER.info(
+            "Preparing PDF delivery for Telegram user %s: path=%s exists=%s size=%s",
+            user.id,
+            report_path,
+            report_exists,
+            report_size,
         )
+
+        with open(report_path, "rb") as report_file:
+            await message.reply_document(
+                document=report_file,
+                filename=report_path.name,
+                caption="Ваш персональний звіт готовий.",
+            )
+    except Exception:
+        LOGGER.exception("Failed to deliver PDF for Telegram user %s", user.id)
+        try:
+            await notice.edit_text(
+                "Звіт створено, але не вдалося надіслати PDF. Спробуйте ще раз."
+            )
+        except Exception:
+            pass
+        return
+
+    try:
+        await notice.delete()
+    except Exception:
+        LOGGER.debug("Could not delete the progress notice", exc_info=True)
+
+
+async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await deliver_report(update.message, update.effective_user, context)
+
+
+BOT_COMMANDS = [
+    BotCommand("start", "Заповнити анкету й отримати звіт"),
+    BotCommand("report", "Згенерувати звіт за збереженими даними"),
+    BotCommand("profile", "Переглянути збережені дані"),
+    BotCommand("cancel", "Скасувати заповнення анкети"),
+    BotCommand("help", "Допомога"),
+]
+
+
+async def trace_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log every incoming update before the ConversationHandler routes it.
+
+    Registered in group -1, which runs ahead of the real handlers and never
+    consumes the update. If a message shows up here but the matching state
+    handler never logs, the conversation state was lost rather than the handler
+    raising — that distinction is invisible from the handler side alone.
+    """
+    user = update.effective_user
+    user_id = user.id if user else "unknown"
+
+    if update.message and update.message.text is not None:
+        LOGGER.info("IN  message from %s: %r", user_id, update.message.text)
+    elif update.callback_query:
+        LOGGER.info("IN  callback from %s: %r", user_id, update.callback_query.data)
+    else:
+        LOGGER.info("IN  other update from %s: %s", user_id, update)
+
+    # _conversations is private API; if it moves in a future PTB release we
+    # still want the update trace above, so failure here must stay harmless.
+    try:
+        for handler in context.application.handlers.get(0, []):
+            if isinstance(handler, ConversationHandler) and update.effective_chat and user:
+                key = (update.effective_chat.id, user.id)
+                state = handler._conversations.get(key)
+                LOGGER.info("    conversation state for %s: %r", key, state)
+                break
+    except Exception:
+        LOGGER.debug("Could not read conversation state", exc_info=True)
+
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Catch-all so no handler exception is swallowed silently."""
+    LOGGER.exception("Unhandled exception while processing update: %s", update, exc_info=context.error)
+
+
+async def post_init(application: Application) -> None:
+    """Register the command menu shown next to the Telegram input field."""
+    try:
+        await application.bot.set_my_commands(BOT_COMMANDS)
+        LOGGER.info("Bot command menu registered")
+    except Exception:
+        LOGGER.exception("Failed to register the bot command menu")
 
 
 def main():
@@ -337,7 +469,7 @@ def main():
         LOGGER.exception("Database initialization failed")
         raise
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -358,14 +490,34 @@ def main():
                 CallbackQueryHandler(handle_confirmation, pattern="^confirm_")
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("help", help_command),
+            CommandHandler("profile", profile),
+            CommandHandler("report", report),
+        ],
+        # Without this, /start is silently ignored for anyone who abandoned the
+        # form mid-way: the state handlers filter commands out and entry_points
+        # are not re-checked while a conversation is active.
+        allow_reentry=True,
     )
 
+    # Group -1 runs before everything else and does not consume the update.
+    app.add_handler(MessageHandler(filters.ALL, trace_update), group=-1)
+    app.add_handler(CallbackQueryHandler(trace_update), group=-1)
+
     app.add_handler(conversation_handler)
+    # Also registered outside the conversation so they work for users who have
+    # no active conversation state.
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("report", report))
+    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(CommandHandler("help", help_command))
+
+    app.add_error_handler(on_error)
 
     print("✅ Bot started...")
+    print(f"   Логи пишуться у {LOG_PATH}")
     app.run_polling()
 
 

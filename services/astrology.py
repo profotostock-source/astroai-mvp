@@ -6,6 +6,7 @@ including zodiac signs, planet positions, houses, and aspects.
 
 import logging
 import os
+import re
 from datetime import datetime
 
 from database import get_cached_city, save_city_to_cache
@@ -67,6 +68,37 @@ _UKRAINIAN_CANONICAL_CASEFOLDED: frozenset[str] = frozenset(
 )
 
 
+# Latin characters that are visually identical to Cyrillic ones. A mixed
+# keyboard layout produces words like "Украiна" (Latin "i") that never match a
+# Cyrillic alias, so we repair them before lookup.
+_LATIN_TO_CYRILLIC = str.maketrans({
+    "a": "а", "c": "с", "e": "е", "i": "і", "o": "о", "p": "р", "x": "х", "y": "у",
+    "s": "ѕ", "j": "ј",
+})
+
+_CYRILLIC_RE = re.compile(r"[Ѐ-ӿ]")
+
+
+def _fold(text: str) -> str:
+    """Casefold and repair Latin/Cyrillic homoglyphs for alias matching.
+
+    Homoglyph repair only applies to strings that already contain Cyrillic, so
+    genuinely Latin input like "Ukraine" is left untouched.
+    """
+    folded = " ".join(text.strip().casefold().split())
+    if _CYRILLIC_RE.search(folded):
+        folded = folded.translate(_LATIN_TO_CYRILLIC)
+    return folded.replace("'", "").replace("’", "").replace("`", "")
+
+
+# Accepted spellings of Ukraine, including frequent typos. Anything starting
+# with "укра"/"ukra" is also treated as Ukraine (see normalize_birthplace).
+_UKRAINE_ALIASES: frozenset[str] = frozenset({
+    "україна", "украіна", "украина", "украйна", "вкраїна", "укр", "укр.",
+    "ukraine", "ukraina", "ukrayina", "ukr", "ua",
+})
+
+
 class AstrologyError(Exception):
     """Raised when astrology calculation fails."""
 
@@ -105,15 +137,19 @@ def normalize_birthplace(value: str) -> tuple[str, str | None]:
     city = parts[0]
     country = parts[1] if len(parts) > 1 else None
 
-    # Apply alias map to normalize city name (case-insensitive via casefolded lookup)
-    canonical = _CITY_ALIASES_CASEFOLDED.get(city.casefold())
+    # Apply alias map to normalize city name (case-insensitive, homoglyph-tolerant)
+    canonical = _CITY_ALIASES_CASEFOLDED.get(_fold(city))
     if canonical is not None:
         city = canonical
 
     # Normalize country names
     if country:
-        country_lower = country.lower()
-        if country_lower in ("україна", "ukraine", "ua"):
+        country_key = _fold(country)
+        if (
+            country_key in _UKRAINE_ALIASES
+            or country_key.startswith("укра")
+            or country_key.startswith("ukra")
+        ):
             country = "UA"
         # Keep other country names as-is (GeoNames accepts various formats)
 
@@ -458,6 +494,32 @@ def calculate_natal_chart(profile: dict) -> dict:
                         LOGGER.info("Geocoding successful on retry with UA")
                     except Exception as retry_error:
                         LOGGER.debug("Retry with Ukraine failed: %s", retry_error)
+                        # Keep the original error for reporting
+
+                # A country the user misspelled ("Украіна", "Украна", ...) is
+                # passed to GeoNames verbatim and poisons the whole lookup.
+                # Retry with the city alone before giving up.
+                elif country is not None:
+                    LOGGER.info(
+                        "Retrying geocoding for %s without the country %r", city, country
+                    )
+                    try:
+                        subject = AstrologicalSubject(
+                            name=profile["name"],
+                            year=year,
+                            month=month,
+                            day=day,
+                            hour=hour,
+                            minute=minute,
+                            city=city,
+                            geonames_username=geonames_username,
+                        )
+                        LOGGER.info("Geocoding successful on retry without country")
+                        # Do not cache under the unusable country string.
+                        country = None
+                        city_key, country_key = _make_cache_keys(city, country)
+                    except Exception as retry_error:
+                        LOGGER.debug("Retry without country failed: %s", retry_error)
                         # Keep the original error for reporting
 
             # If both attempts failed, raise error
