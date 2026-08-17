@@ -427,8 +427,13 @@ async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE)
     try:
         chart = calculate_natal_chart(saved)
         path = generate_year_report(saved, user.id, chart)
+        LOGGER.info("Sending Year PDF to Telegram user %s: %s bytes", user.id, path.stat().st_size)
         with open(path, "rb") as stream:
-            await message.reply_document(stream, filename=path.name, caption="Ваш річний звіт готовий.")
+            await context.bot.send_document(
+                chat_id=message.chat_id, document=stream, filename=path.name,
+                caption="Ваш річний звіт готовий.", read_timeout=120, write_timeout=120, connect_timeout=30,
+            )
+        LOGGER.info("Year PDF delivered to Telegram user %s", user.id)
         await notice.delete()
     except Exception:
         LOGGER.exception("Year report failed for user %s", user.id)
@@ -555,8 +560,13 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
         save_together_report(owner_user_id=user.id,
             person_a_name=a["name"], person_a_birth_date=a["birth_date"], person_a_birth_time=a["birth_time"], person_a_birthplace=a["birthplace"], person_a_birth_time_known=bool(chart_a.get("birth_time_known")),
             person_b_name=b["name"], person_b_birth_date=b["birth_date"], person_b_birth_time=b["birth_time"], person_b_birthplace=b["birthplace"], person_b_birth_time_known=bool(chart_b.get("birth_time_known")), report_path=str(path))
+        LOGGER.info("Sending Together PDF to Telegram user %s: %s bytes", user.id, path.stat().st_size)
         with open(path, "rb") as stream:
-            await message.reply_document(stream, filename=path.name, caption="Ваш звіт для пари готовий.")
+            await context.bot.send_document(
+                chat_id=message.chat_id, document=stream, filename=path.name,
+                caption="Ваш звіт для пари готовий.", read_timeout=120, write_timeout=120, connect_timeout=30,
+            )
+        LOGGER.info("Together PDF delivered to Telegram user %s", user.id)
         await notice.delete()
     except Exception:
         LOGGER.exception("Together report failed for user %s", user.id)
