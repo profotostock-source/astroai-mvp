@@ -37,6 +37,7 @@ from reportlab.platypus import (
 )
 
 from .ai_interpretation import generate_psychological_report
+from services.evidence_builder import get_practical_recs
 from .chart_wheel import ChartWheel
 from .glyphs import (
     ELEMENT_NAMES, SIGN_ELEMENT, draw_constellation, draw_emblem, draw_planet,
@@ -325,46 +326,46 @@ def _build_styles(F: dict) -> dict[str, ParagraphStyle]:
             textColor=INK, alignment=TA_LEFT, spaceAfter=2, spaceBefore=8,
         ),
         "kicker": ParagraphStyle(
-            "Kicker", fontName=sans, fontSize=7.5, leading=12,
+            "Kicker", fontName=sans, fontSize=8, leading=13,
             textColor=GOLD, alignment=TA_LEFT, spaceAfter=1,
         ),
         "lede": ParagraphStyle(
-            "Lede", fontName=serif, fontSize=12.5, leading=20,
+            "Lede", fontName=serif, fontSize=13, leading=21,
             textColor=INK_SOFT, alignment=TA_LEFT, spaceAfter=10,
         ),
         # Ragged right, not justified: Ukrainian words are long and ReportLab
         # does not hyphenate, so justification opens rivers between words.
         "body": ParagraphStyle(
-            "Body", fontName=sans, fontSize=10.2, leading=17.4,
-            textColor=INK, alignment=TA_LEFT, spaceAfter=9,
+            "Body", fontName=serif, fontSize=11, leading=19,
+            textColor=INK, alignment=TA_LEFT, spaceAfter=10,
         ),
         # bulletFontName is unused as a bullet; _ai_section reads it to know
         # which serif face to set the raised initial in.
         "body_drop": ParagraphStyle(
-            "BodyDrop", fontName=sans, fontSize=10.2, leading=17.4,
-            textColor=INK, alignment=TA_LEFT, spaceAfter=9,
+            "BodyDrop", fontName=serif, fontSize=11, leading=19,
+            textColor=INK, alignment=TA_LEFT, spaceAfter=10,
             bulletFontName=serif,
         ),
         "item": ParagraphStyle(
-            "Item", fontName=sans, fontSize=9.6, leading=15.2,
-            textColor=INK, alignment=TA_LEFT, spaceAfter=4.5,
+            "Item", fontName=sans, fontSize=10, leading=16,
+            textColor=INK, alignment=TA_LEFT, spaceAfter=5,
             leftIndent=6 * mm, bulletIndent=0,
-            bulletFontName=sans, bulletFontSize=9.6, bulletColor=GOLD,
+            bulletFontName=sans, bulletFontSize=10, bulletColor=GOLD,
         ),
         "pull": ParagraphStyle(
-            "Pull", fontName=serif, fontSize=11.5, leading=18.5,
+            "Pull", fontName=serif, fontSize=12, leading=20,
             textColor=INK, alignment=TA_LEFT, spaceAfter=0,
         ),
         "caption": ParagraphStyle(
-            "Caption", fontName=sans, fontSize=8.2, leading=13,
+            "Caption", fontName=sans, fontSize=9, leading=14,
             textColor=MUTED, alignment=TA_LEFT, spaceAfter=4,
         ),
         "caption_c": ParagraphStyle(
-            "CaptionC", fontName=sans, fontSize=8.2, leading=13,
+            "CaptionC", fontName=sans, fontSize=9, leading=14,
             textColor=MUTED, alignment=TA_CENTER, spaceAfter=4,
         ),
         "legal": ParagraphStyle(
-            "Legal", fontName=sans, fontSize=7.8, leading=12.5,
+            "Legal", fontName=sans, fontSize=8.5, leading=13,
             textColor=MUTED, alignment=TA_JUSTIFY, spaceAfter=4,
         ),
     }
@@ -678,6 +679,74 @@ def _sign_section(kicker: str, code: str, desc: dict, styles: dict, state: dict)
 
     # Closes the page: fills the empty lower half and gives each sign a face.
     items.append(SignEmblem(code, CONTENT_W))
+    return items
+
+
+def _practical_section(recs: dict, styles: dict, state: dict) -> list:
+    """Chapter 04 — career fields, sports, recovery practices."""
+
+    def _recs_block(title: str, items: list[str]) -> list:
+        if not items:
+            return []
+        result = [
+            Paragraph(title.upper(), styles["kicker"]),
+            _hr(GOLD, "100%", 0.9, 1, 6),
+        ]
+        for item in items:
+            result.append(Paragraph(_escape(item), styles["item"], bulletText="—"))
+        return result
+
+    career = recs.get("career", [])
+    sport = recs.get("sport", [])
+    recovery = recs.get("recovery", [])
+
+    # Two-column layout: career (wider) | sport
+    col_w = (CONTENT_W - 8 * mm) / 2.0
+    left_col = _recs_block("Сфери діяльності", career)
+    right_col = _recs_block("Рух і спорт", sport)
+
+    if left_col or right_col:
+        two_col = Table(
+            [[left_col or [], right_col or []]],
+            colWidths=[col_w + 8 * mm, col_w - 8 * mm],
+        )
+        two_col.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (0, -1), 0),
+            ("RIGHTPADDING", (0, 0), (0, -1), 8 * mm),
+            ("LEFTPADDING", (1, 0), (1, -1), 0),
+            ("RIGHTPADDING", (1, 0), (1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        two_col = None
+
+    items: list = [
+        _Marker(state, section="Практичні орієнтири"),
+        Paragraph("ВАШ ВЕКТОР", styles["kicker"]),
+        Paragraph("Практичні орієнтири", styles["display"]),
+        _hr(GOLD, "18%", 1.2, 5, 9),
+        Paragraph(
+            "Нижче — сфери та практики, що резонують із вашою комбінацією знаків. "
+            "Це не список обов'язків, а матеріал для роздуму.",
+            styles["caption"],
+        ),
+        Spacer(1, 6 * mm),
+    ]
+
+    if two_col is not None:
+        items.append(two_col)
+
+    if recovery:
+        items += [
+            Spacer(1, 10 * mm),
+            Paragraph("ВІДНОВЛЕННЯ", styles["kicker"]),
+            _hr(GOLD, "100%", 0.9, 1, 6),
+        ]
+        for item in recovery:
+            items.append(Paragraph(_escape(item), styles["item"], bulletText="—"))
+
     return items
 
 
@@ -1053,7 +1122,6 @@ def generate_report(profile: dict, telegram_user_id: int, astrology_data: dict) 
                 _hr(GOLD, "18%", 1.2, 5, 9),
                 Paragraph(
                     "Асцендент змінюється приблизно щодві години, тому його неможливо "
-                    "визначити без точного часу народження. Якщо ви знайдете цей час у "
                     "документах — надішліть його нам, і ми перерахуємо звіт: додасться "
                     "цілий шар про те, як вас сприймають ззовні.",
                     styles["body"],
@@ -1063,49 +1131,44 @@ def generate_report(profile: dict, telegram_user_id: int, astrology_data: dict) 
 
     # 03 — the chart itself
     story += _plate("03", "Карта неба",
-                    "Положення планет і кути між ними", asc_sign or sun_sign,
+                    "Положення планет i кути між ними", asc_sign or sun_sign,
                     styles, state)
     story += _wheel_page(astrology_data, styles, F, state)
 
+    # 04 — practical orientations
+    practical_recs = get_practical_recs(astrology_data)
+    if any(practical_recs.values()):
+        story += _plate("04", "Практичнi орієнтири",
+                        "Сфери · Рух · Вiдновлення", moon_sign or sun_sign, styles, state)
+        story += _practical_section(practical_recs, styles, state)
+
     story += [
         PageBreak(),
-        _Marker(state, section="Позиції планет"),
-        Paragraph("ТЕХНІЧНІ ДАНІ", styles["kicker"]),
-        Paragraph("Позиції планет", styles["display"]),
+        _Marker(state, section="Позицiї планет"),
+        Paragraph("ТЕХНIЧНI ДАНI", styles["kicker"]),
+        Paragraph("Позицiї планет", styles["display"]),
         _hr(GOLD, "18%", 1.2, 5, 9),
         Spacer(1, 3 * mm),
         _build_planets_table(planets_data, styles),
         Spacer(1, 16 * mm),
         _hr(HAIRLINE, "100%", 0.5, 0, 6),
         Paragraph(
-            "Цей матеріал створено для саморефлексії та особистого розвитку. "
-            "Він не є медичною, психологічною, юридичною чи фінансовою рекомендацією "
-            "та не передбачає майбутнє. Астрологічні символи використані як мова для "
-            "роздумів про себе, а не як інструмент вимірювання.",
+            "Цей матерiал створено для саморефлексiї та особистого розвитку. "
+            "Вiн не є медичною, психологiчною, юридичною чи фiнансовою рекомендацiєю "
+            "та не передбачає майбутнє. Астрологiчнi символи використанi як мова для "
+            "роздумiв про себе, а не як iнструмент вимiрювання.",
             styles["legal"],
         ),
         Spacer(1, 6 * mm),
-        Paragraph(f"Inner Compass · звіт створено {generated_at}", styles["caption"]),
+        Paragraph(f"Inner Compass · звiт створено {generated_at}", styles["caption"]),
     ]
 
     doc = _make_document(output_path, F, profile, generated_at, signs, state)
 
     try:
         doc.build(story)
-    except Exception as error:
-        LOGGER.exception("PDF generation failed: %s", error)
-        raise PDFGenerationError("Failed to generate PDF report") from error
+    except Exception as exc:
+        raise PDFGenerationError(f"ReportLab build failed: {exc}") from exc
 
+    LOGGER.info("Report written to %s", output_path)
     return output_path
-
-
-def generate_demo_report(profile: dict, telegram_user_id: int) -> Path:
-    """Legacy demo report without astrology data. Kept for backward compatibility."""
-    return generate_report(
-        profile,
-        telegram_user_id,
-        {
-            "sun_sign": None, "moon_sign": None, "ascendant_sign": None,
-            "planets": {}, "houses": [], "aspects": [], "birth_time_known": False,
-        },
-    )

@@ -50,6 +50,7 @@ def init_db() -> None:
             """
         )
 
+    _init_together_table()
     LOGGER.info("Database initialized at %s", DB_PATH)
 
 
@@ -201,3 +202,87 @@ def get_user_profile(telegram_user_id: int) -> dict | None:
         return None
 
     return dict(row)
+
+def _init_together_table() -> None:
+    """Create together_reports table if it does not exist."""
+    with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS together_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_user_id INTEGER NOT NULL,
+                person_a_name TEXT,
+                person_a_birth_date TEXT,
+                person_a_birth_time TEXT,
+                person_a_birthplace TEXT,
+                person_a_birth_time_known INTEGER DEFAULT 1,
+                person_b_name TEXT,
+                person_b_birth_date TEXT,
+                person_b_birth_time TEXT,
+                person_b_birthplace TEXT,
+                person_b_birth_time_known INTEGER DEFAULT 1,
+                report_path TEXT,
+                context_version TEXT DEFAULT 'together_v1',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+
+def save_together_report(
+    owner_user_id: int,
+    person_a_name: str,
+    person_a_birth_date: str,
+    person_a_birth_time: str,
+    person_a_birthplace: str,
+    person_a_birth_time_known: bool,
+    person_b_name: str,
+    person_b_birth_date: str,
+    person_b_birth_time: str,
+    person_b_birthplace: str,
+    person_b_birth_time_known: bool,
+    report_path: str | None = None,
+) -> int:
+    """Save a Together report record to the database.
+
+    Returns:
+        The new row id.
+    """
+    _init_together_table()
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO together_reports (
+                owner_user_id,
+                person_a_name, person_a_birth_date, person_a_birth_time,
+                person_a_birthplace, person_a_birth_time_known,
+                person_b_name, person_b_birth_date, person_b_birth_time,
+                person_b_birthplace, person_b_birth_time_known,
+                report_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                owner_user_id,
+                person_a_name, person_a_birth_date, person_a_birth_time,
+                person_a_birthplace, int(person_a_birth_time_known),
+                person_b_name, person_b_birth_date, person_b_birth_time,
+                person_b_birthplace, int(person_b_birth_time_known),
+                report_path,
+            ),
+        )
+        return cursor.lastrowid
+
+
+def get_together_reports(user_id: int) -> list[dict]:
+    """Return all Together reports for a given Telegram user_id."""
+    _init_together_table()
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT * FROM together_reports
+            WHERE owner_user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]

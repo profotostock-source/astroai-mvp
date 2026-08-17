@@ -16,3 +16,5 @@ venv/
 .DS_Store
 *.log
 test_results.log
+*.bak
+*.bak.html
