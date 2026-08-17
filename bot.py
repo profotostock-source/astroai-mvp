@@ -34,6 +34,8 @@ logging.basicConfig(
 )
 
 LOGGER = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 TOKEN = config.TELEGRAM_BOT_TOKEN
 
