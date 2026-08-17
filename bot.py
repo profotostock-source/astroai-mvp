@@ -5,9 +5,10 @@ from datetime import date, datetime
 from pathlib import Path
 
 import config
-from database import get_user_profile, init_db, upsert_user_profile
+from database import get_user_profile, init_db, upsert_user_profile, save_together_report
 from services.astrology import AstrologyError, calculate_natal_chart
 from services.pdf_report import PDFGenerationError, generate_report
+from services.pdf_year_report import generate_year_report
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -40,6 +41,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 TOKEN = config.TELEGRAM_BOT_TOKEN
 
 NAME, BIRTH_DATE, BIRTH_TIME, BIRTH_CITY, CONFIRMATION = range(5)
+TOGETHER_NAME, TOGETHER_DATE, TOGETHER_TIME_KNOWN, TOGETHER_TIME, TOGETHER_PLACE, TOGETHER_CONFIRM = range(5, 11)
 
 UNKNOWN_TIME_PHRASES = {
     "не знаю",
@@ -403,9 +405,166 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
         LOGGER.debug("Could not delete the progress notice", exc_info=True)
 
 
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await deliver_report(update.message, update.effective_user, context)
+def get_report_type_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Inner Compass — натальний звіт", callback_data="report_type_natal")],
+        [InlineKeyboardButton("Inner Compass Year — прогноз на рік", callback_data="report_type_year")],
+        [InlineKeyboardButton("Inner Compass Together — звіт для пари", callback_data="report_type_together")],
+    ])
 
+
+async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    saved = get_user_profile(update.effective_user.id)
+    if not saved:
+        await update.message.reply_text("Спочатку заповніть профіль командою /start.")
+        return
+    await update.message.reply_text("Оберіть звіт:", reply_markup=get_report_type_keyboard())
+
+
+async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> None:
+    saved = get_user_profile(user.id)
+    notice = await message.reply_text("Готую річний звіт. Це може тривати до хвилини.")
+    try:
+        chart = calculate_natal_chart(saved)
+        path = generate_year_report(saved, user.id, chart)
+        with open(path, "rb") as stream:
+            await message.reply_document(stream, filename=path.name, caption="Ваш річний звіт готовий.")
+        await notice.delete()
+    except Exception:
+        LOGGER.exception("Year report failed for user %s", user.id)
+        await notice.edit_text("Не вдалося створити річний звіт. Спробуйте ще раз.")
+
+
+async def handle_report_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    if query.data == "report_type_natal":
+        await deliver_report(query.message, update.effective_user, context)
+    elif query.data == "report_type_year":
+        await deliver_year_report(query.message, update.effective_user, context)
+
+
+def get_time_known_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Так, знаю", callback_data="together_time_yes")],
+        [InlineKeyboardButton("Не знаю", callback_data="together_time_no")],
+    ])
+
+
+def get_together_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Усе правильно", callback_data="together_confirm_yes")],
+        [InlineKeyboardButton("Ввести заново", callback_data="together_confirm_restart")],
+    ])
+
+
+async def start_together(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    profile = get_user_profile(update.effective_user.id)
+    if not profile:
+        await query.message.reply_text("Спочатку заповніть профіль командою /start.")
+        return ConversationHandler.END
+    context.user_data["together_a"] = dict(profile)
+    await query.message.reply_text(f"Перший профіль — {profile['name']}. Введіть ім’я другої людини.")
+    return TOGETHER_NAME
+
+
+async def together_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    value = normalize_spaces(update.message.text)
+    if not is_valid_name(value):
+        await update.message.reply_text("Введіть коректне ім’я.")
+        return TOGETHER_NAME
+    context.user_data["together_b_name"] = value
+    await update.message.reply_text("Введіть дату народження у форматі ДД.ММ.РРРР.")
+    return TOGETHER_DATE
+
+
+async def together_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    value = normalize_spaces(update.message.text)
+    if not parse_birth_date(value):
+        await update.message.reply_text("Дата некоректна. Формат: ДД.ММ.РРРР.")
+        return TOGETHER_DATE
+    context.user_data["together_b_date"] = value
+    await update.message.reply_text("Чи відомий точний час народження?", reply_markup=get_time_known_keyboard())
+    return TOGETHER_TIME_KNOWN
+
+
+async def together_time_known(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    if query.data == "together_time_yes":
+        await query.message.reply_text("Введіть час у форматі ГГ:ХХ.")
+        return TOGETHER_TIME
+    context.user_data["together_b_time"] = "Не знаю"
+    await query.message.reply_text("Введіть місто та країну, наприклад: Львів, Україна.")
+    return TOGETHER_PLACE
+
+
+async def together_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    value = normalize_birth_time(update.message.text)
+    if not value or value == "Не знаю":
+        await update.message.reply_text("Введіть точний час у форматі ГГ:ХХ.")
+        return TOGETHER_TIME
+    context.user_data["together_b_time"] = value
+    await update.message.reply_text("Введіть місто та країну, наприклад: Львів, Україна.")
+    return TOGETHER_PLACE
+
+
+async def together_place(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    value = normalize_spaces(update.message.text)
+    if not is_valid_birth_place(value) or "," not in value:
+        await update.message.reply_text("Вкажіть місто і країну через кому.")
+        return TOGETHER_PLACE
+    context.user_data["together_b_place"] = value
+    a = context.user_data["together_a"]
+    summary = (f"Перевірте дані:\n\nПерша людина: {a['name']}\n"
+               f"Друга людина: {context.user_data['together_b_name']}\n"
+               f"Дата: {context.user_data['together_b_date']}\n"
+               f"Час: {context.user_data['together_b_time']}\nМісце: {value}")
+    await update.message.reply_text(summary, reply_markup=get_together_confirm_keyboard())
+    return TOGETHER_CONFIRM
+
+
+async def together_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    if query.data == "together_confirm_restart":
+        for key in list(context.user_data):
+            if key.startswith("together_b_"):
+                context.user_data.pop(key, None)
+        await query.message.reply_text("Введіть ім’я другої людини заново.")
+        return TOGETHER_NAME
+    await deliver_together_report(query.message, update.effective_user, context)
+    return ConversationHandler.END
+
+
+async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from services.pdf_together_report import generate_together_report
+    a = context.user_data["together_a"]
+    b = {"name": context.user_data["together_b_name"], "birth_date": context.user_data["together_b_date"],
+         "birth_time": context.user_data["together_b_time"], "birthplace": context.user_data["together_b_place"]}
+    notice = await message.reply_text("Готую звіт для пари. Це може тривати до хвилини.")
+    try:
+        chart_a, chart_b = calculate_natal_chart(a), calculate_natal_chart(b)
+        path = generate_together_report(profile_a=a, profile_b=b, telegram_user_id=user.id, chart_a=chart_a, chart_b=chart_b)
+        save_together_report(owner_user_id=user.id,
+            person_a_name=a["name"], person_a_birth_date=a["birth_date"], person_a_birth_time=a["birth_time"], person_a_birthplace=a["birthplace"], person_a_birth_time_known=bool(chart_a.get("birth_time_known")),
+            person_b_name=b["name"], person_b_birth_date=b["birth_date"], person_b_birth_time=b["birth_time"], person_b_birthplace=b["birthplace"], person_b_birth_time_known=bool(chart_b.get("birth_time_known")), report_path=str(path))
+        with open(path, "rb") as stream:
+            await message.reply_document(stream, filename=path.name, caption="Ваш звіт для пари готовий.")
+        await notice.delete()
+    except Exception:
+        LOGGER.exception("Together report failed for user %s", user.id)
+        await notice.edit_text("Не вдалося створити звіт для пари. Перевірте дані й спробуйте ще раз.")
+    finally:
+        for key in list(context.user_data):
+            if key.startswith("together_"):
+                context.user_data.pop(key, None)
 
 BOT_COMMANDS = [
     BotCommand("start", "Заповнити анкету й отримати звіт"),
@@ -509,6 +668,23 @@ def main():
     app.add_handler(CallbackQueryHandler(trace_update), group=-1)
 
     app.add_handler(conversation_handler)
+
+    together_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_together, pattern="^report_type_together$")],
+        states={
+            TOGETHER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_name)],
+            TOGETHER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_date)],
+            TOGETHER_TIME_KNOWN: [CallbackQueryHandler(together_time_known, pattern="^together_time_")],
+            TOGETHER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_time)],
+            TOGETHER_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_place)],
+            TOGETHER_CONFIRM: [CallbackQueryHandler(together_confirm, pattern="^together_confirm_")],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
+        name="together_conversation",
+    )
+    app.add_handler(together_handler)
+    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(natal|year)$"))
     # Also registered outside the conversation so they work for users who have
     # no active conversation state.
     app.add_handler(CommandHandler("profile", profile))
