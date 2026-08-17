@@ -98,6 +98,17 @@ _UKRAINE_ALIASES: frozenset[str] = frozenset({
     "ukraine", "ukraina", "ukrayina", "ukr", "ua",
 })
 
+# GeoNames/Kerykeion expects an ISO country code. Users naturally enter
+# country names in Ukrainian or Russian, so normalize common variants first.
+_COUNTRY_ALIASES: dict[str, str] = {
+    "росія": "RU", "россия": "RU", "russia": "RU", "ru": "RU",
+    "польща": "PL", "польша": "PL", "poland": "PL", "pl": "PL",
+    "німеччина": "DE", "германия": "DE", "germany": "DE", "de": "DE",
+    "білорусь": "BY", "беларусь": "BY", "belarus": "BY", "by": "BY",
+    "молдова": "MD", "moldova": "MD", "md": "MD",
+    "румунія": "RO", "румыния": "RO", "romania": "RO", "ro": "RO",
+}
+
 
 class AstrologyError(Exception):
     """Raised when astrology calculation fails."""
@@ -151,7 +162,8 @@ def normalize_birthplace(value: str) -> tuple[str, str | None]:
             or country_key.startswith("ukra")
         ):
             country = "UA"
-        # Keep other country names as-is (GeoNames accepts various formats)
+        else:
+            country = _COUNTRY_ALIASES.get(country_key, country)
 
     return city, country
 
