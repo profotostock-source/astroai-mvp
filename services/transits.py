@@ -21,6 +21,17 @@ ASPECTS = [
 # Planets to track as transiting (outer = slow, more significant)
 TRANSIT_PLANETS = ["Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
 
+MONTH_NAMES_UA = {
+    1: "Січень", 2: "Лютий", 3: "Березень", 4: "Квітень",
+    5: "Травень", 6: "Червень", 7: "Липень", 8: "Серпень",
+    9: "Вересень", 10: "Жовтень", 11: "Листопад", 12: "Грудень",
+}
+
+
+def format_month_year_ua(value: date) -> str:
+    """Return a locale-independent Ukrainian month and year label."""
+    return f"{MONTH_NAMES_UA[value.month]} {value.year}"
+
 # Natal points we care about
 NATAL_POINTS = ["sun", "moon", "ascendant", "mercury", "venus", "mars"]
 
@@ -176,7 +187,7 @@ def find_active_transits(
                             "aspect": asp["aspect"],
                             "orb": asp["orb"],
                             "exactness": asp["exactness"],
-                            "peak_month": d.strftime("%B %Y"),
+                            "peak_month": format_month_year_ua(d),
                             "peak_date": d.isoformat(),
                             "retrograde": t_data.get("retrograde", False),
                         }
