@@ -42,7 +42,7 @@ class InterpretationEngineTests(unittest.TestCase):
 
     def test_formatter_returns_json_context(self):
         payload = json.loads(_format_astrology_data_for_gpt(self.chart))
-        self.assertEqual(payload["schema_version"], "1.0.0")
+        self.assertEqual(payload["schema_version"], "2.0.0")
         self.assertIn("facts", payload)
         self.assertIn("chart_summary", payload)
 

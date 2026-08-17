@@ -301,40 +301,26 @@ def _extract_houses_data(subject: AstrologicalSubject) -> list[dict]:
 
 
 def _extract_aspects_data(subject: AstrologicalSubject) -> tuple[list[dict], list[str]]:
-    """Extract aspect information from AstrologicalSubject.
-
-    Args:
-        subject: Kerykeion AstrologicalSubject instance.
-
-    Returns:
-        tuple[list[dict], list[str]]: Tuple of (aspects_list, warnings).
-            aspects_list contains dictionaries with planet1, planet2, aspect, orb.
-            warnings contains any issues encountered during extraction.
-    """
-    aspects_list = []
-    warnings = []
-
+    """Extract natal aspects through the Kerykeion v5 chart-data API."""
     try:
-        if hasattr(subject, "aspects_list"):
-            aspects_raw = subject.aspects_list
-            if isinstance(aspects_raw, list) and len(aspects_raw) > 0:
-                for aspect in aspects_raw:
-                    if isinstance(aspect, dict):
-                        aspects_list.append({
-                            "planet1": aspect.get("planet1", "N/A"),
-                            "planet2": aspect.get("planet2", "N/A"),
-                            "aspect": aspect.get("aspect", "N/A"),
-                            "orb": aspect.get("orb", 0),
-                        })
-            else:
-                warnings.append("Aspects are not available for this birth data.")
-        else:
-            warnings.append("Aspect calculation is not supported in this Kerykeion version.")
-    except Exception as error:
-        LOGGER.warning("Failed to extract aspects: %s", error)
-        warnings.append(f"Aspect calculation failed: {error}")
+        from kerykeion import ChartDataFactory
 
-    return aspects_list, warnings
+        chart_data = ChartDataFactory.create_natal_chart_data(subject.model())
+        aspects = []
+        for item in chart_data.aspects:
+            aspects.append({
+                "planet1": item.p1_name,
+                "planet2": item.p2_name,
+                "aspect": item.aspect,
+                "orb": item.orbit,
+                "movement": item.aspect_movement,
+            })
+        if not aspects:
+            return [], ["No natal aspects were returned for the active points."]
+        return aspects, []
+    except Exception as error:
+        LOGGER.warning("Failed to extract aspects through ChartDataFactory: %s", error)
+        return [], [f"Aspect calculation failed: {error}"]
 
 
 def calculate_natal_chart(profile: dict) -> dict:

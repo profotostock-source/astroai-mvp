@@ -106,7 +106,7 @@ def generate_psychological_report(astrology_data: dict, profile: dict | None = N
 
 Уявіть, що ви пишете людині, яку добре знаєте і поважаєте: спокійно, прямо, без відстані.
 
-Джерело змісту — лише масив facts у report_context_v1.
+Джерело змісту — лише масив facts у report_context_v2.
 
 Правила змісту:
 - Не додавайте жодної риси, причини, події чи висновку, якого немає у facts.

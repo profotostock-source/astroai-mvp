@@ -16,7 +16,7 @@ class EvidenceBuilderTests(unittest.TestCase):
         self.assertIn("need_for_independence", ids)
         self.assertIn("need_for_stability", ids)
         self.assertIn("diplomatic_self_presentation", ids)
-        self.assertEqual(context["schema_version"], "1.0.0")
+        self.assertEqual(context["schema_version"], "2.0.0")
 
     def test_ascendant_is_excluded_when_time_unknown(self):
         context = build_report_context({
