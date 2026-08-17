@@ -516,7 +516,7 @@ def main():
 
     app.add_error_handler(on_error)
 
-    print("✅ Bot started...")
+    print("Bot started...")
     print(f"   Логи пишуться у {LOG_PATH}")
     app.run_polling()
 
