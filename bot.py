@@ -253,7 +253,7 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text("✅ Дані збережено.")
 
         context.user_data.clear()
-        await deliver_report(query.message, user, context)
+        await query.message.reply_text("Оберіть, який звіт створити:", reply_markup=get_report_type_keyboard())
         return ConversationHandler.END
 
     context.user_data.clear()
