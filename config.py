@@ -22,6 +22,12 @@ FREE_USER_IDS = {
     if value.strip().isdigit()
 }
 
+ADMIN_USER_IDS = {
+    int(value.strip())
+    for value in os.getenv("ADMIN_USER_IDS", "382403468").split(",")
+    if value.strip().isdigit()
+}
+
 if not TELEGRAM_BOT_TOKEN:
     LOGGER.error(
         "TELEGRAM_BOT_TOKEN is not set. "

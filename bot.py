@@ -311,6 +311,38 @@ async def paysupport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 Збережіть це повідомлення та скриншот платежу. Передайте їх власнику Inner Compass, від якого ви отримали посилання на бот. Оплачене, але не доставлене замовлення також можна повторно відкрити через /report без нової оплати.""")
 
 
+def _format_star_amount(amount) -> str:
+    whole = amount.amount
+    nanostars = getattr(amount, "nanostar_amount", 0) or 0
+    if not nanostars:
+        return str(whole)
+    fraction = f"{nanostars:09d}".rstrip("0")
+    return f"{whole}.{fraction}"
+
+
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the bot's Stars balance only to configured owners."""
+    user = update.effective_user
+    if not user or user.id not in config.ADMIN_USER_IDS:
+        await update.message.reply_text("Ця команда доступна лише власнику бота.")
+        return
+    try:
+        balance = await context.bot.get_my_star_balance()
+        transactions = await context.bot.get_star_transactions(limit=5)
+    except Exception:
+        LOGGER.exception("Failed to load Stars balance for owner %s", user.id)
+        await update.message.reply_text("Не вдалося отримати баланс Telegram Stars. Спробуйте ще раз трохи пізніше.")
+        return
+    lines = ["⭐ Баланс Inner Compass", "", f"Доступно: {_format_star_amount(balance)} ⭐"]
+    recent = list(transactions.transactions)
+    if recent:
+        lines.extend(["", "Останні операції:"])
+        for transaction in recent:
+            sign = "+" if transaction.amount >= 0 else ""
+            date_text = transaction.date.astimezone().strftime("%d.%m.%Y %H:%M")
+            lines.append(f"{date_text} — {sign}{transaction.amount} ⭐")
+    await update.message.reply_text("\n".join(lines))
+
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
@@ -766,6 +798,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("terms", terms_command))
     app.add_handler(CommandHandler("paysupport", paysupport_command))
+    app.add_handler(CommandHandler("balance", balance_command))
 
     app.add_error_handler(on_error)
 
