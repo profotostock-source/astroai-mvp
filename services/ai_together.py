@@ -5,6 +5,8 @@ import logging
 import os
 import re
 
+from .together_fallback import build_together_fallback
+
 LOGGER = logging.getLogger(__name__)
 
 ASPECT_UA = {
@@ -133,17 +135,17 @@ def generate_together_report(context: dict, profile_a: dict, profile_b: dict) ->
     try:
         from openai import OpenAI
     except ImportError:
-        return _FALLBACK.strip()
+        return build_together_fallback(context, profile_a, profile_b)
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return _FALLBACK.strip()
+        return build_together_fallback(context, profile_a, profile_b)
 
     try:
         client = OpenAI(api_key=api_key)
     except Exception as err:
         LOGGER.error("OpenAI client init failed: %s", err)
-        return _FALLBACK.strip()
+        return build_together_fallback(context, profile_a, profile_b)
 
     name_a = context.get("person_a", {}).get("name") or profile_a.get("name", "A")
     name_b = context.get("person_b", {}).get("name") or profile_b.get("name", "B")
@@ -189,9 +191,9 @@ def generate_together_report(context: dict, profile_a: dict, profile_b: dict) ->
         )
         text = response.choices[0].message.content
         if not isinstance(text, str) or not text.strip():
-            return _FALLBACK.strip()
+            return build_together_fallback(context, profile_a, profile_b)
         LOGGER.info("Together report generated via GPT for %s + %s", name_a, name_b)
         return text.strip()
     except Exception as err:
         LOGGER.warning("Together GPT failed: %s -- using fallback.", err)
-        return _FALLBACK.strip()
+        return build_together_fallback(context, profile_a, profile_b)
