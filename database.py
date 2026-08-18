@@ -1,11 +1,12 @@
 import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 LOGGER = logging.getLogger(__name__)
-DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR = Path(os.getenv("RAILWAY_VOLUME_MOUNT_PATH") or (Path(__file__).resolve().parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "astroai.db"
 
