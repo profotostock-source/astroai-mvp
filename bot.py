@@ -305,10 +305,24 @@ async def terms_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def paysupport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"""Підтримка з питань оплати
+    await update.message.reply_text(f"""Підтримка Inner Compass
 
+Напишіть: @{config.SUPPORT_USERNAME}
 Ваш Telegram ID: {update.effective_user.id}
-Збережіть це повідомлення та скриншот платежу. Передайте їх власнику Inner Compass, від якого ви отримали посилання на бот. Оплачене, але не доставлене замовлення також можна повторно відкрити через /report без нової оплати.""")
+
+Якщо оплата пройшла, але PDF не надійшов, спочатку повторно відкрийте /report — нової оплати не буде. Якщо це не допомогло, надішліть у підтримку свій ID і скриншот квитанції.""")
+
+
+async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("""Політика конфіденційності Inner Compass
+
+• Для створення звіту бот зберігає Telegram ID, ім’я, дату, час і місце народження.
+• Дані використовуються лише для розрахунку карти, створення PDF, повторної доставки та підтримки замовлення.
+• Для генерації персоналізованого тексту частина даних передається сервісу OpenAI через захищене API.
+• Платіжні реквізити бот не отримує і не зберігає. Оплату Telegram Stars обробляє Telegram.
+• Дані не продаються та не використовуються для рекламних розсилок.
+• Щоб запросити видалення своїх даних, напишіть у підтримку: @{config.SUPPORT_USERNAME}.
+• Астрологічні матеріали призначені для саморефлексії й не замінюють професійних консультацій.""")
 
 
 def _format_star_amount(amount) -> str:
@@ -671,6 +685,7 @@ BOT_COMMANDS = [
     BotCommand("cancel", "Скасувати заповнення анкети"),
     BotCommand("terms", "Умови придбання"),
     BotCommand("paysupport", "Підтримка з оплати"),
+    BotCommand("privacy", "Політика конфіденційності"),
     BotCommand("help", "Допомога"),
 ]
 
@@ -715,6 +730,8 @@ async def post_init(application: Application) -> None:
     """Register the command menu shown next to the Telegram input field."""
     try:
         await application.bot.set_my_commands(BOT_COMMANDS)
+        await application.bot.set_my_short_description("Персональні астрологічні PDF-звіти українською")
+        await application.bot.set_my_description("Inner Compass створює персональні PDF-звіти: натальна карта, прогноз на рік і аналіз стосунків. Конкретні пояснення, графіки та практичні рекомендації українською. Акційна ціна кожного звіту — 99 ⭐.")
         LOGGER.info("Bot command menu registered")
     except Exception:
         LOGGER.exception("Failed to register the bot command menu")
@@ -798,6 +815,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("terms", terms_command))
     app.add_handler(CommandHandler("paysupport", paysupport_command))
+    app.add_handler(CommandHandler("privacy", privacy_command))
     app.add_handler(CommandHandler("balance", balance_command))
 
     app.add_error_handler(on_error)
