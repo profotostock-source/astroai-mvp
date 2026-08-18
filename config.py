@@ -28,8 +28,6 @@ ADMIN_USER_IDS = {
     if value.strip().isdigit()
 }
 
-SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "Nickolas_81").lstrip("@")
-
 if not TELEGRAM_BOT_TOKEN:
     LOGGER.error(
         "TELEGRAM_BOT_TOKEN is not set. "

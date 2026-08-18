@@ -307,10 +307,9 @@ async def terms_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def paysupport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"""Підтримка Inner Compass
 
-Напишіть: @{config.SUPPORT_USERNAME}
 Ваш Telegram ID: {update.effective_user.id}
 
-Якщо оплата пройшла, але PDF не надійшов, спочатку повторно відкрийте /report — нової оплати не буде. Якщо це не допомогло, надішліть у підтримку свій ID і скриншот квитанції.""")
+Якщо оплата пройшла, але PDF не надійшов, повторно відкрийте /report — бот відновить оплачене замовлення без нової оплати. Збережіть свій Telegram ID і квитанцію до завершення отримання звіту.""")
 
 
 async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -321,7 +320,7 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Для генерації персоналізованого тексту частина даних передається сервісу OpenAI через захищене API.
 • Платіжні реквізити бот не отримує і не зберігає. Оплату Telegram Stars обробляє Telegram.
 • Дані не продаються та не використовуються для рекламних розсилок.
-• Щоб запросити видалення своїх даних, напишіть у підтримку: @{config.SUPPORT_USERNAME}.
+• Щоб запросити видалення своїх даних, скористайтеся командою /paysupport і збережіть свій Telegram ID.
 • Астрологічні матеріали призначені для саморефлексії й не замінюють професійних консультацій.""")
 
 
