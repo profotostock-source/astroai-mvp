@@ -30,6 +30,7 @@ from .interpretations import SIGN_NAMES
 from .ai_together import generate_together_report as _ai_generate_together
 from .together_evidence import build_together_context
 from .synastry import calculate_synastry
+from .together_visuals import build_personal_final, build_visual_analysis
 
 LOGGER = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -433,6 +434,7 @@ def generate_together_report(
 
     story = [NextPageTemplate("body"), PageBreak()]
     story += _profile_page_together(profile_a, profile_b, chart_a, chart_b, styles, state)
+    story += build_visual_analysis(context, styles, state)
     story += _plate_together("", "ВИ РАЗОМ", "Карта взаємодії двох натальних карт",
                               "Lib", styles, state)
 
@@ -443,7 +445,7 @@ def generate_together_report(
         sign_code = plate_signs[i % len(plate_signs)]
         story += _section_block(num, title, subtitle, body_text, styles, state)
 
-    story += _final_and_disclaimer(ai_text, profile_a, profile_b, generated_at, styles, state)
+    story += build_personal_final(context, profile_a, profile_b, generated_at, styles, state)
 
     doc = _make_together_document(output_path, F, profile_a, profile_b, generated_at, state)
     try:
