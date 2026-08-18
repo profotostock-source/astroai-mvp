@@ -806,7 +806,19 @@
 
     /* Ensure no horizontal overflow */
     img, svg { max-width: 100%; }
-  </style>
+
+  .launch-offer{padding:96px 0;background:#221f1b;color:#f7efe2}
+  .launch-offer .eye{color:#c9a76b}.launch-offer h2{max-width:760px;margin:14px 0 12px}
+  .launch-offer-intro{max-width:680px;color:#d8cec0;margin-bottom:34px}
+  .offer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .offer-card{border:1px solid rgba(201,167,107,.35);padding:28px;display:flex;flex-direction:column;min-height:270px}
+  .offer-card h3{font-size:25px;margin:8px 0}.offer-card p{color:#cfc4b5;flex:1}
+  .offer-price{font-family:Georgia,serif;font-size:42px;color:#d8b779;margin:16px 0}
+  .offer-old{font-size:13px;color:#a89b8b;text-transform:uppercase;letter-spacing:.12em}
+  .offer-free{margin-top:22px;padding:18px 22px;background:rgba(201,167,107,.09);border-left:2px solid #c9a76b}
+  @media(max-width:760px){.offer-grid{grid-template-columns:1fr}.launch-offer{padding:68px 0}}
+
+</style>
 </head>
 <body>
 
@@ -1314,7 +1326,7 @@
         <li>Без реєстрації</li>
         <li>Без очікування</li>
         <li>Зберігай і перечитуй у зручний момент</li>
-        <li>Безкоштовно під час beta</li>
+        <li>Безкоштовний міні-портрет · повний PDF — 99 ⭐</li>
       </ul>
     </aside>
 
@@ -1457,6 +1469,21 @@
 <!-- ═══════════════════════════════════════════════════
      FAQ
 ═══════════════════════════════════════════════════ -->
+
+<section class="launch-offer" id="price">
+  <div class="container">
+    <span class="eye">Стартова акція</span>
+    <h2>Будь-який повний звіт — 99 Telegram Stars</h2>
+    <p class="launch-offer-intro">Одна акційна ціна на старті. Оплата відбувається безпосередньо в Telegram, а готовий PDF надходить у цей самий чат.</p>
+    <div class="offer-grid">
+      <article class="offer-card"><span class="offer-old">Персональний портрет</span><h3>Inner Compass</h3><p>Натальна карта, характер, ресурси, суперечності та повторювані сценарії.</p><div class="offer-price">99 ⭐</div><a class="btn btn-gold" href="https://t.me/inner_compass_report_bot" target="_blank" rel="noopener">Отримати звіт →</a></article>
+      <article class="offer-card"><span class="offer-old">Наступні 12 місяців</span><h3>Inner Compass Year</h3><p>Активні періоди, ключові теми року, ризики та конкретні дії.</p><div class="offer-price">99 ⭐</div><a class="btn btn-gold" href="https://t.me/inner_compass_report_bot" target="_blank" rel="noopener">Подивитися рік →</a></article>
+      <article class="offer-card"><span class="offer-old">Для двох</span><h3>Inner Compass Together</h3><p>Синастрія, графіки взаємодії, сильні аспекти та план для пари.</p><div class="offer-price">99 ⭐</div><a class="btn btn-gold" href="https://t.me/inner_compass_report_bot" target="_blank" rel="noopener">Створити для пари →</a></article>
+    </div>
+    <div class="offer-free"><strong>Безкоштовно:</strong> персональний міні-портрет із Сонцем, Місяцем, Асцендентом, Венерою та Марсом — без оплати й без введення картки.</div>
+  </div>
+</section>
+
 <section class="faq" id="faq">
   <div class="container">
     <span class="eye">Питання</span>

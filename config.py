@@ -11,6 +11,17 @@ LOGGER = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
 
+REPORT_PRICES_XTR = {
+    "natal": int(os.getenv("PRICE_NATAL_XTR", "99")),
+    "year": int(os.getenv("PRICE_YEAR_XTR", "99")),
+    "together": int(os.getenv("PRICE_TOGETHER_XTR", "99")),
+}
+FREE_USER_IDS = {
+    int(value.strip())
+    for value in os.getenv("FREE_USER_IDS", "").split(",")
+    if value.strip().isdigit()
+}
+
 if not TELEGRAM_BOT_TOKEN:
     LOGGER.error(
         "TELEGRAM_BOT_TOKEN is not set. "

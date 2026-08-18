@@ -51,6 +51,7 @@ def init_db() -> None:
         )
 
     _init_together_table()
+    _init_payments_table()
     LOGGER.info("Database initialized at %s", DB_PATH)
 
 
@@ -286,3 +287,76 @@ def get_together_reports(user_id: int) -> list[dict]:
             (user_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def _init_payments_table() -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_user_id INTEGER NOT NULL,
+                product TEXT NOT NULL,
+                amount_xtr INTEGER NOT NULL,
+                invoice_payload TEXT NOT NULL,
+                telegram_payment_charge_id TEXT NOT NULL UNIQUE,
+                provider_payment_charge_id TEXT,
+                delivered_at TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def save_payment(
+    telegram_user_id: int,
+    product: str,
+    amount_xtr: int,
+    invoice_payload: str,
+    telegram_payment_charge_id: str,
+    provider_payment_charge_id: str | None = None,
+) -> int | None:
+    """Save a successful Stars payment and return its row id."""
+    _init_payments_table()
+    try:
+        with get_connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO payments (
+                    telegram_user_id, product, amount_xtr, invoice_payload,
+                    telegram_payment_charge_id, provider_payment_charge_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    telegram_user_id, product, amount_xtr, invoice_payload,
+                    telegram_payment_charge_id, provider_payment_charge_id,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+
+
+def get_pending_payment(telegram_user_id: int, product: str) -> dict | None:
+    _init_payments_table()
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT * FROM payments
+            WHERE telegram_user_id = ? AND product = ? AND delivered_at IS NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (telegram_user_id, product),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def mark_payment_delivered(payment_id: int | None) -> None:
+    if payment_id is None:
+        return
+    with get_connection() as connection:
+        connection.execute(
+            "UPDATE payments SET delivered_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), payment_id),
+        )

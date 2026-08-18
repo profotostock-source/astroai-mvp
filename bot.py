@@ -5,10 +5,17 @@ from datetime import date, datetime
 from pathlib import Path
 
 import config
-from database import get_user_profile, init_db, upsert_user_profile, save_together_report
+from database import (
+    get_pending_payment, get_user_profile, init_db, mark_payment_delivered,
+    save_together_report, upsert_user_profile,
+)
 from services.astrology import AstrologyError, calculate_natal_chart
 from services.pdf_report import PDFGenerationError, generate_report
 from services.pdf_year_report import generate_year_report
+from services.free_preview import build_free_preview
+from services.payments import (
+    precheckout_callback, send_product_invoice, successful_payment_callback,
+)
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -19,6 +26,7 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
     MessageHandler,
+    PreCheckoutQueryHandler,
     filters,
 )
 
@@ -286,6 +294,24 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def terms_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("""Умови придбання Inner Compass:
+
+• Ви купуєте персоналізований цифровий PDF-звіт.
+• Акційна ціна кожного повного звіту — 99 Telegram Stars.
+• Генерація починається після підтвердження платежу Telegram.
+• Якщо сталася технічна помилка, повторно відкрийте /report: оплачене замовлення буде видано без нової оплати.
+• Матеріал призначений для саморефлексії та не є медичною, психологічною, юридичною чи фінансовою консультацією.
+• З питань платежу скористайтеся /paysupport.""")
+
+
+async def paysupport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"""Підтримка з питань оплати
+
+Ваш Telegram ID: {update.effective_user.id}
+Збережіть це повідомлення та скриншот платежу. Передайте їх власнику Inner Compass, від якого ви отримали посилання на бот. Оплачене, але не доставлене замовлення також можна повторно відкрити через /report без нової оплати.""")
+
+
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
@@ -403,13 +429,15 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
         await notice.delete()
     except Exception:
         LOGGER.debug("Could not delete the progress notice", exc_info=True)
+    context.user_data["_delivery_success"] = True
 
 
 def get_report_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Inner Compass — натальний звіт", callback_data="report_type_natal")],
-        [InlineKeyboardButton("Inner Compass Year — прогноз на рік", callback_data="report_type_year")],
-        [InlineKeyboardButton("Inner Compass Together — звіт для пари", callback_data="report_type_together")],
+        [InlineKeyboardButton("🎁 Безкоштовний міні-портрет", callback_data="report_type_free")],
+        [InlineKeyboardButton("Натальний звіт — 99 ⭐", callback_data="report_type_natal")],
+        [InlineKeyboardButton("Прогноз на рік — 99 ⭐", callback_data="report_type_year")],
+        [InlineKeyboardButton("Звіт для пари — 99 ⭐", callback_data="report_type_together")],
     ])
 
 
@@ -435,19 +463,61 @@ async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE)
             )
         LOGGER.info("Year PDF delivered to Telegram user %s", user.id)
         await notice.delete()
+        context.user_data["_delivery_success"] = True
     except Exception:
         LOGGER.exception("Year report failed for user %s", user.id)
         await notice.edit_text("Не вдалося створити річний звіт. Спробуйте ще раз.")
+
+
+async def _deliver_free_preview(message, user, context: ContextTypes.DEFAULT_TYPE) -> None:
+    profile = get_user_profile(user.id)
+    if not profile:
+        await message.reply_text("Спочатку заповніть профіль командою /start.")
+        return
+    notice = await message.reply_text("Розраховую ваш безкоштовний міні-портрет…")
+    try:
+        chart = calculate_natal_chart(profile)
+        await notice.edit_text(build_free_preview(profile, chart))
+    except Exception:
+        LOGGER.exception("Free preview failed for user %s", user.id)
+        await notice.edit_text("Не вдалося створити міні-портрет. Перевірте дані профілю.")
+
+
+async def _dispatch_paid_report(product, message, user, context, payment_id=None):
+    if product == "together":
+        context.user_data["paid_payment_id"] = payment_id
+        return await _begin_together(message, user, context)
+
+    context.user_data["_delivery_success"] = False
+    if product == "natal":
+        await deliver_report(message, user, context)
+    elif product == "year":
+        await deliver_year_report(message, user, context)
+    if context.user_data.pop("_delivery_success", False):
+        mark_payment_delivered(payment_id)
+    return ConversationHandler.END
+
+
+async def _request_or_deliver(product, message, user, context):
+    pending = get_pending_payment(user.id, product)
+    if pending:
+        await message.reply_text("Знайшла вже оплачене замовлення. Генерую звіт без повторної оплати.")
+        return await _dispatch_paid_report(product, message, user, context, pending["id"])
+    if user.id in config.FREE_USER_IDS:
+        return await _dispatch_paid_report(product, message, user, context)
+    await send_product_invoice(message, user, context, product)
+    return ConversationHandler.END
 
 
 async def handle_report_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_reply_markup(reply_markup=None)
-    if query.data == "report_type_natal":
-        await deliver_report(query.message, update.effective_user, context)
-    elif query.data == "report_type_year":
-        await deliver_year_report(query.message, update.effective_user, context)
+    product = query.data.removeprefix("report_type_")
+    if product == "free":
+        await _deliver_free_preview(query.message, update.effective_user, context)
+        return
+    await _request_or_deliver(product, query.message, update.effective_user, context)
 
 
 def get_time_known_keyboard() -> InlineKeyboardMarkup:
@@ -464,17 +534,21 @@ def get_together_confirm_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+async def _begin_together(message, user, context: ContextTypes.DEFAULT_TYPE):
+    profile = get_user_profile(user.id)
+    if not profile:
+        await message.reply_text("Спочатку заповніть профіль командою /start.")
+        return ConversationHandler.END
+    context.user_data["together_a"] = dict(profile)
+    await message.reply_text(f"Перший профіль — {profile['name']}. Введіть ім’я другої людини.")
+    return TOGETHER_NAME
+
+
 async def start_together(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_reply_markup(reply_markup=None)
-    profile = get_user_profile(update.effective_user.id)
-    if not profile:
-        await query.message.reply_text("Спочатку заповніть профіль командою /start.")
-        return ConversationHandler.END
-    context.user_data["together_a"] = dict(profile)
-    await query.message.reply_text(f"Перший профіль — {profile['name']}. Введіть ім’я другої людини.")
-    return TOGETHER_NAME
+    return await _request_or_deliver("together", query.message, update.effective_user, context)
 
 
 async def together_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -568,6 +642,7 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
             )
         LOGGER.info("Together PDF delivered to Telegram user %s", user.id)
         await notice.delete()
+        mark_payment_delivered(context.user_data.pop("paid_payment_id", None))
     except Exception:
         LOGGER.exception("Together report failed for user %s", user.id)
         await notice.edit_text("Не вдалося створити звіт для пари. Перевірте дані й спробуйте ще раз.")
@@ -578,9 +653,11 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
 
 BOT_COMMANDS = [
     BotCommand("start", "Заповнити анкету й отримати звіт"),
-    BotCommand("report", "Згенерувати звіт за збереженими даними"),
+    BotCommand("report", "Безкоштовне демо та звіти по 99 ⭐"),
     BotCommand("profile", "Переглянути збережені дані"),
     BotCommand("cancel", "Скасувати заповнення анкети"),
+    BotCommand("terms", "Умови придбання"),
+    BotCommand("paysupport", "Підтримка з оплати"),
     BotCommand("help", "Допомога"),
 ]
 
@@ -680,7 +757,10 @@ def main():
     app.add_handler(conversation_handler)
 
     together_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_together, pattern="^report_type_together$")],
+        entry_points=[
+            CallbackQueryHandler(start_together, pattern="^report_type_together$"),
+            MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback),
+        ],
         states={
             TOGETHER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_name)],
             TOGETHER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_date)],
@@ -693,14 +773,18 @@ def main():
         allow_reentry=True,
         name="together_conversation",
     )
+    app.bot_data["paid_report_dispatch"] = _dispatch_paid_report
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(together_handler)
-    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(natal|year)$"))
+    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(free|natal|year)$"))
     # Also registered outside the conversation so they work for users who have
     # no active conversation state.
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("terms", terms_command))
+    app.add_handler(CommandHandler("paysupport", paysupport_command))
 
     app.add_error_handler(on_error)
 
