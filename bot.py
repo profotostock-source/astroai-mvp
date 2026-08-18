@@ -12,7 +12,6 @@ from database import (
 from services.astrology import AstrologyError, calculate_natal_chart
 from services.pdf_report import PDFGenerationError, generate_report
 from services.pdf_year_report import generate_year_report
-from services.free_preview import build_free_preview
 from services.payments import (
     precheckout_callback, send_product_invoice, successful_payment_callback,
 )
@@ -434,7 +433,6 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def get_report_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎁 Безкоштовний міні-портрет", callback_data="report_type_free")],
         [InlineKeyboardButton("Натальний звіт — 99 ⭐", callback_data="report_type_natal")],
         [InlineKeyboardButton("Прогноз на рік — 99 ⭐", callback_data="report_type_year")],
         [InlineKeyboardButton("Звіт для пари — 99 ⭐", callback_data="report_type_together")],
@@ -469,20 +467,6 @@ async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE)
         await notice.edit_text("Не вдалося створити річний звіт. Спробуйте ще раз.")
 
 
-async def _deliver_free_preview(message, user, context: ContextTypes.DEFAULT_TYPE) -> None:
-    profile = get_user_profile(user.id)
-    if not profile:
-        await message.reply_text("Спочатку заповніть профіль командою /start.")
-        return
-    notice = await message.reply_text("Розраховую ваш безкоштовний міні-портрет…")
-    try:
-        chart = calculate_natal_chart(profile)
-        await notice.edit_text(build_free_preview(profile, chart))
-    except Exception:
-        LOGGER.exception("Free preview failed for user %s", user.id)
-        await notice.edit_text("Не вдалося створити міні-портрет. Перевірте дані профілю.")
-
-
 async def _dispatch_paid_report(product, message, user, context, payment_id=None):
     if product == "together":
         context.user_data["paid_payment_id"] = payment_id
@@ -514,9 +498,6 @@ async def handle_report_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     await query.edit_message_reply_markup(reply_markup=None)
     product = query.data.removeprefix("report_type_")
-    if product == "free":
-        await _deliver_free_preview(query.message, update.effective_user, context)
-        return
     await _request_or_deliver(product, query.message, update.effective_user, context)
 
 
@@ -653,7 +634,7 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
 
 BOT_COMMANDS = [
     BotCommand("start", "Заповнити анкету й отримати звіт"),
-    BotCommand("report", "Безкоштовне демо та звіти по 99 ⭐"),
+    BotCommand("report", "Акційні звіти по 99 ⭐"),
     BotCommand("profile", "Переглянути збережені дані"),
     BotCommand("cancel", "Скасувати заповнення анкети"),
     BotCommand("terms", "Умови придбання"),
@@ -776,7 +757,7 @@ def main():
     app.bot_data["paid_report_dispatch"] = _dispatch_paid_report
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(together_handler)
-    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(free|natal|year)$"))
+    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(natal|year)$"))
     # Also registered outside the conversation so they work for users who have
     # no active conversation state.
     app.add_handler(CommandHandler("profile", profile))

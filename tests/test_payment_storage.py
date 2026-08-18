@@ -1,5 +1,4 @@
 import database
-from services.free_preview import build_free_preview
 
 
 def test_payment_can_be_retried_until_delivery(monkeypatch, tmp_path):
@@ -30,17 +29,3 @@ def test_duplicate_charge_is_not_inserted_twice(monkeypatch, tmp_path):
     )
     assert database.save_payment(**args)
     assert database.save_payment(**args) is None
-
-
-def test_free_preview_contains_core_placements_and_offer():
-    text = build_free_preview(
-        {"name": "Марія"},
-        {
-            "sun_sign": "Gem", "moon_sign": "Cap", "ascendant_sign": "Tau",
-            "birth_time_known": True,
-            "planets": {"venus": {"sign": "Can"}, "mars": {"sign": "Leo"}},
-        },
-    )
-    assert "Безкоштовний міні-портрет" in text
-    assert all(label in text for label in ("Сонце", "Місяць", "Асцендент", "Венера", "Марс"))
-    assert "99 ⭐" in text

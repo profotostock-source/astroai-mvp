@@ -10,7 +10,6 @@ def test_report_keyboard_exposes_three_products():
         for button in row
     ]
     assert callbacks == [
-        "report_type_free",
         "report_type_natal",
         "report_type_year",
         "report_type_together",
