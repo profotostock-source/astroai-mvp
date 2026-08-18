@@ -1,5 +1,7 @@
 """Rich Ukrainian fallback copy for Together reports when AI is unavailable."""
 
+from .together_depth import deepen_together_text
+
 ASPECT_UA = {
     "conjunction": "сполучення", "opposition": "опозиція", "trine": "тригон",
     "square": "квадрат", "sextile": "секстиль",
@@ -51,4 +53,5 @@ def build_together_fallback(context: dict, profile_a: dict, profile_b: dict) -> 
 - Раз на тиждень проводити щонайменше годину без телефонів.
 - Перед порадою запитувати: «Тобі зараз потрібна підтримка чи рішення?»
 - Раз на місяць переглядати одну спільну домовленість."""
-    return "\n\n".join(f"{title}\n\n{body}" for title, body in sections) + "\n\n" + ending
+    base_text = "\n\n".join(f"{title}\n\n{body}" for title, body in sections)
+    return deepen_together_text(base_text, context)

@@ -29,6 +29,7 @@ from .glyphs import draw_constellation, draw_sign, scatter_stars
 from .interpretations import SIGN_NAMES
 from .ai_together import generate_together_report as _ai_generate_together
 from .together_evidence import build_together_context
+from .together_fallback import build_together_fallback
 from .synastry import calculate_synastry
 from .together_visuals import build_personal_final, build_visual_analysis
 
@@ -431,6 +432,14 @@ def generate_together_report(
 
     # Parse AI text by section headers
     section_bodies = _parse_sections_from_ai(ai_text)
+    fallback_bodies = _parse_sections_from_ai(build_together_fallback(context, profile_a, profile_b))
+    for section_number in range(1, 10):
+        current = section_bodies.get(section_number, "").strip()
+        fallback = fallback_bodies.get(section_number, "").strip()
+        if len(current.split()) < 160 and current != fallback:
+            section_bodies[section_number] = (current + "\n\n" + fallback).strip()
+        elif not current:
+            section_bodies[section_number] = fallback
 
     story = [NextPageTemplate("body"), PageBreak()]
     story += _profile_page_together(profile_a, profile_b, chart_a, chart_b, styles, state)
