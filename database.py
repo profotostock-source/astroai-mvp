@@ -360,3 +360,40 @@ def mark_payment_delivered(payment_id: int | None) -> None:
             "UPDATE payments SET delivered_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), payment_id),
         )
+
+
+def _init_feedback_table() -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_user_id INTEGER NOT NULL,
+                telegram_username TEXT,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def save_feedback(telegram_user_id: int, telegram_username: str | None, text: str) -> int:
+    _init_feedback_table()
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """INSERT INTO feedback (telegram_user_id, telegram_username, text, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (telegram_user_id, telegram_username, text, datetime.now(timezone.utc).isoformat()),
+        )
+        return cursor.lastrowid
+
+
+def get_recent_feedback(limit: int = 10) -> list[dict]:
+    _init_feedback_table()
+    with get_connection() as connection:
+        rows = connection.execute(
+            """SELECT id, telegram_user_id, telegram_username, text, created_at
+               FROM feedback ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]

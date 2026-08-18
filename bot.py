@@ -6,7 +6,8 @@ from pathlib import Path
 
 import config
 from database import (
-    get_pending_payment, get_user_profile, init_db, mark_payment_delivered,
+    get_pending_payment, get_recent_feedback, get_user_profile, init_db, mark_payment_delivered,
+    save_feedback,
     save_together_report, upsert_user_profile,
 )
 from services.astrology import AstrologyError, calculate_natal_chart
@@ -324,6 +325,54 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Астрологічні матеріали призначені для саморефлексії й не замінюють професійних консультацій.""")
 
 
+def get_feedback_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Залишити відгук", callback_data="leave_feedback")]
+    ])
+
+
+async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = normalize_spaces(" ".join(context.args))
+    if text:
+        save_feedback(update.effective_user.id, update.effective_user.username, text[:2000])
+        await update.message.reply_text("Дякуємо! Ваш відгук збережено 💛")
+        return
+    context.user_data["awaiting_feedback"] = True
+    await update.message.reply_text("Напишіть свій відгук одним повідомленням. До 2000 символів.")
+
+
+async def feedback_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data["awaiting_feedback"] = True
+    await update.callback_query.message.reply_text("Напишіть свій відгук одним повідомленням. До 2000 символів.")
+
+
+async def receive_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.pop("awaiting_feedback", False):
+        return
+    text = normalize_spaces(update.message.text)
+    if len(text) < 3:
+        context.user_data["awaiting_feedback"] = True
+        await update.message.reply_text("Відгук надто короткий. Напишіть, будь ласка, трохи детальніше.")
+        return
+    save_feedback(update.effective_user.id, update.effective_user.username, text[:2000])
+    await update.message.reply_text("Дякуємо! Ваш відгук збережено 💛")
+
+
+async def feedbacks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in config.ADMIN_USER_IDS:
+        await update.message.reply_text("Ця команда доступна лише власнику бота.")
+        return
+    items = get_recent_feedback(10)
+    if not items:
+        await update.message.reply_text("Відгуків поки немає.")
+        return
+    lines = ["Останні відгуки:"]
+    for item in items:
+        author = f"@{item['telegram_username']}" if item["telegram_username"] else str(item["telegram_user_id"])
+        lines.append(f"\n#{item['id']} · {author}\n{item['text']}")
+    await update.message.reply_text("\n".join(lines))
+
 def _format_star_amount(amount) -> str:
     whole = amount.amount
     nanostars = getattr(amount, "nanostar_amount", 0) or 0
@@ -458,6 +507,7 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
                 document=report_file,
                 filename=report_path.name,
                 caption="Ваш персональний звіт готовий.",
+                reply_markup=get_feedback_keyboard(),
             )
     except Exception:
         LOGGER.exception("Failed to deliver PDF for Telegram user %s", user.id)
@@ -502,7 +552,7 @@ async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE)
         with open(path, "rb") as stream:
             await context.bot.send_document(
                 chat_id=message.chat_id, document=stream, filename=path.name,
-                caption="Ваш річний звіт готовий.", read_timeout=120, write_timeout=120, connect_timeout=30,
+                caption="Ваш річний звіт готовий.", reply_markup=get_feedback_keyboard(), read_timeout=120, write_timeout=120, connect_timeout=30,
             )
         LOGGER.info("Year PDF delivered to Telegram user %s", user.id)
         await notice.delete()
@@ -664,7 +714,7 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
         with open(path, "rb") as stream:
             await context.bot.send_document(
                 chat_id=message.chat_id, document=stream, filename=path.name,
-                caption="Ваш звіт для пари готовий.", read_timeout=120, write_timeout=120, connect_timeout=30,
+                caption="Ваш звіт для пари готовий.", reply_markup=get_feedback_keyboard(), read_timeout=120, write_timeout=120, connect_timeout=30,
             )
         LOGGER.info("Together PDF delivered to Telegram user %s", user.id)
         await notice.delete()
@@ -685,6 +735,7 @@ BOT_COMMANDS = [
     BotCommand("terms", "Умови придбання"),
     BotCommand("paysupport", "Підтримка з оплати"),
     BotCommand("privacy", "Політика конфіденційності"),
+    BotCommand("feedback", "Залишити відгук"),
     BotCommand("help", "Допомога"),
 ]
 
@@ -815,6 +866,10 @@ def main():
     app.add_handler(CommandHandler("terms", terms_command))
     app.add_handler(CommandHandler("paysupport", paysupport_command))
     app.add_handler(CommandHandler("privacy", privacy_command))
+    app.add_handler(CommandHandler("feedback", feedback_command))
+    app.add_handler(CommandHandler("feedbacks", feedbacks_command))
+    app.add_handler(CallbackQueryHandler(feedback_prompt, pattern="^leave_feedback$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_feedback), group=1)
     app.add_handler(CommandHandler("balance", balance_command))
 
     app.add_error_handler(on_error)
