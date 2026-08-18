@@ -9,6 +9,7 @@ import os
 import re
 from datetime import datetime
 
+from babel import Locale
 from database import get_cached_city, save_city_to_cache
 from kerykeion import AstrologicalSubject
 
@@ -110,6 +111,21 @@ _COUNTRY_ALIASES: dict[str, str] = {
 }
 
 
+def _build_country_aliases() -> dict[str, str]:
+    """Build ISO aliases from Ukrainian, Russian and English CLDR names."""
+    aliases = dict(_COUNTRY_ALIASES)
+    for locale_name in ("uk", "ru", "en"):
+        for code, name in Locale.parse(locale_name).territories.items():
+            if len(code) == 2 and isinstance(name, str):
+                aliases[_fold(name)] = code.upper()
+    for code in set(aliases.values()):
+        aliases[code.casefold()] = code
+    return aliases
+
+
+_ALL_COUNTRY_ALIASES = _build_country_aliases()
+
+
 class AstrologyError(Exception):
     """Raised when astrology calculation fails."""
 
@@ -143,7 +159,7 @@ def normalize_birthplace(value: str) -> tuple[str, str | None]:
     normalized = " ".join(value.strip().split())
 
     # Split by comma if present
-    parts = [part.strip() for part in normalized.split(",")]
+    parts = [part.strip() for part in normalized.split(",", 1)]
 
     city = parts[0]
     country = parts[1] if len(parts) > 1 else None
@@ -163,7 +179,7 @@ def normalize_birthplace(value: str) -> tuple[str, str | None]:
         ):
             country = "UA"
         else:
-            country = _COUNTRY_ALIASES.get(country_key, country)
+            country = _ALL_COUNTRY_ALIASES.get(country_key, country)
 
     return city, country
 
