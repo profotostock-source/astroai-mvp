@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+from logging.handlers import RotatingFileHandler
 from datetime import date, datetime
 from pathlib import Path
 
@@ -31,6 +32,13 @@ from telegram.ext import (
 )
 
 LOG_PATH = Path(__file__).resolve().parent / "bot.log"
+_TOKEN_PATTERN = re.compile(r"\b\d{6,12}:AA[A-Za-z0-9_-]{20,}\b")
+
+
+class RedactingFormatter(logging.Formatter):
+    def format(self, record):
+        return _TOKEN_PATTERN.sub("[REDACTED_TELEGRAM_TOKEN]", super().format(record))
+
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -38,9 +46,14 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(),
         # Console history is easy to lose; keep a durable copy for debugging.
-        logging.FileHandler(LOG_PATH, encoding="utf-8"),
+        RotatingFileHandler(LOG_PATH, maxBytes=2_000_000, backupCount=3, encoding="utf-8"),
     ],
 )
+
+for _handler in logging.getLogger().handlers:
+    _handler.setFormatter(RedactingFormatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    ))
 
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -310,7 +323,7 @@ async def paysupport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 Ваш Telegram ID: {update.effective_user.id}
 
-Якщо оплата пройшла, але PDF не надійшов, повторно відкрийте /report — бот відновить оплачене замовлення без нової оплати. Збережіть свій Telegram ID і квитанцію до завершення отримання звіту.""")
+Якщо оплата пройшла, але PDF не надійшов, повторно відкрийте /report — бот відновить оплачене замовлення без нової оплати. Підтримка: profotostock@gmail.com. Збережіть свій Telegram ID і квитанцію.""")
 
 
 async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

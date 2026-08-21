@@ -891,7 +891,7 @@
            data-cta="hero">
           Отримати свій Inner Compass →
         </a>
-        <span class="hero-note">Безкоштовно під час beta · Telegram · кілька хвилин</span>
+        <span class="hero-note">Будь-який повний звіт · 99 Telegram Stars</span>
       </div>
     </div>
 
@@ -1151,7 +1151,7 @@
            data-cta="demo">
           Отримати свій Inner Compass →
         </a>
-        <p class="demo-note" style="margin-top:14px;">Безкоштовно під час beta · Telegram · кілька хвилин</p>
+        <p class="demo-note" style="margin-top:14px;">Будь-який повний звіт · 99 Telegram Stars</p>
       </div>
 
     </div>
@@ -1538,10 +1538,10 @@
 
     <details>
       <summary>
-        Це безкоштовно?
+        Скільки коштує звіт?
         <span class="faq-toggle" aria-hidden="true"><span class="faq-open">+</span><span class="faq-close">×</span></span>
       </summary>
-      <p class="faq-answer">Так, зараз Inner Compass у відкритому beta-тестуванні. Обидва формати доступні безкоштовно.</p>
+      <p class="faq-answer">Акційна ціна кожного повного звіту — 99 Telegram Stars. Остаточну суму Telegram покаже перед підтвердженням оплати.</p>
     </details>
 
   </div>
@@ -1561,7 +1561,7 @@
      data-cta="final">
     Отримати свій Inner Compass →
   </a>
-  <p class="cta-final-note">Безкоштовно під час beta · Telegram · кілька хвилин</p>
+  <p class="cta-final-note">Будь-який повний звіт · 99 Telegram Stars</p>
 </section>
 
 
@@ -1572,10 +1572,9 @@
   <div class="footer-inner">
     <span class="footer-brand">Inner Compass</span>
     <ul class="footer-links">
-      <!-- TODO: create Privacy Policy page -->
-      <li><a href="#">Privacy Policy</a></li>
-      <!-- TODO: create Terms of Service page -->
-      <li><a href="#">Terms</a></li>
+      <li><a href="privacy.html">Privacy Policy</a></li>
+      <li><a href="terms.html">Terms</a></li>
+      <li><a href="mailto:profotostock@gmail.com">Support</a></li>
       <li><a href="https://t.me/inner_compass_report_bot" target="_blank" rel="noopener">Telegram</a></li>
     </ul>
     <span style="font-size:12px;font-family:sans-serif;color:var(--muted);">© 2026 Inner Compass</span>
@@ -1722,6 +1721,13 @@
       });
     });
   }
+
+
+  document.querySelectorAll('a[data-cta]').forEach(function (link) {
+    var source = ('landing_' + (link.getAttribute('data-cta') || 'unknown'))
+      .toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 64);
+    link.href = 'https://t.me/inner_compass_report_bot?start=' + source;
+  });
 
 })();
 </script>
