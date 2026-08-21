@@ -398,3 +398,21 @@ def get_recent_feedback(limit: int = 10) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+def delete_user_data(telegram_user_id: int) -> None:
+    """Delete profile/report data and anonymize payment rows for accounting."""
+    _init_together_table()
+    _init_payments_table()
+    _init_feedback_table()
+    with get_connection() as connection:
+        connection.execute("DELETE FROM user_profiles WHERE telegram_user_id = ?", (telegram_user_id,))
+        connection.execute("DELETE FROM together_reports WHERE owner_user_id = ?", (telegram_user_id,))
+        connection.execute("DELETE FROM feedback WHERE telegram_user_id = ?", (telegram_user_id,))
+        rows = connection.execute(
+            "SELECT id FROM payments WHERE telegram_user_id = ?", (telegram_user_id,)
+        ).fetchall()
+        for row in rows:
+            connection.execute(
+                "UPDATE payments SET telegram_user_id = 0, invoice_payload = ? WHERE id = ?",
+                (f"deleted:{row['id']}", row["id"]),
+            )

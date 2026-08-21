@@ -7,7 +7,7 @@ from pathlib import Path
 
 import config
 from database import (
-    get_pending_payment, get_recent_feedback, get_user_profile, init_db, mark_payment_delivered,
+    delete_user_data, get_pending_payment, get_recent_feedback, get_user_profile, init_db, mark_payment_delivered,
     save_feedback,
     save_together_report, upsert_user_profile,
 )
@@ -334,8 +334,27 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Для генерації персоналізованого тексту частина даних передається сервісу OpenAI через захищене API.
 • Платіжні реквізити бот не отримує і не зберігає. Оплату Telegram Stars обробляє Telegram.
 • Дані не продаються та не використовуються для рекламних розсилок.
-• Щоб запросити видалення своїх даних, скористайтеся командою /paysupport і збережіть свій Telegram ID.
+• Видалити профіль, дані звітів і відгуки можна командою /delete.
 • Астрологічні матеріали призначені для саморефлексії й не замінюють професійних консультацій.""")
+
+
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    delete_user_data(user.id)
+    context.user_data.clear()
+    reports_dir = Path(__file__).resolve().parent / "reports"
+    patterns = [f"report_{user.id}.pdf", f"year_report_{user.id}*.pdf", f"together_{user.id}.pdf"]
+    for pattern in patterns:
+        for report_path in reports_dir.glob(pattern):
+            try:
+                report_path.unlink()
+            except OSError:
+                LOGGER.warning("Could not remove generated report user_id=%s", user.id)
+    await update.message.reply_text(
+        "Ваш профіль, дані звітів і відгуки видалено. Платіжні записи "
+        "анонімізовано для обліку. Повторна доставка попередніх покупок після "
+        "видалення буде недоступна."
+    )
 
 
 def get_feedback_keyboard() -> InlineKeyboardMarkup:
@@ -748,6 +767,7 @@ BOT_COMMANDS = [
     BotCommand("terms", "Умови придбання"),
     BotCommand("paysupport", "Підтримка з оплати"),
     BotCommand("privacy", "Політика конфіденційності"),
+    BotCommand("delete", "Видалити свої дані"),
     BotCommand("feedback", "Залишити відгук"),
     BotCommand("help", "Допомога"),
 ]
@@ -765,11 +785,11 @@ async def trace_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = user.id if user else "unknown"
 
     if update.message and update.message.text is not None:
-        LOGGER.info("IN  message from %s: %r", user_id, update.message.text)
+        LOGGER.info("IN message user_id=%s length=%s", user_id, len(update.message.text))
     elif update.callback_query:
-        LOGGER.info("IN  callback from %s: %r", user_id, update.callback_query.data)
+        LOGGER.info("IN callback user_id=%s", user_id)
     else:
-        LOGGER.info("IN  other update from %s: %s", user_id, update)
+        LOGGER.info("IN other update user_id=%s", user_id)
 
     # _conversations is private API; if it moves in a future PTB release we
     # still want the update trace above, so failure here must stay harmless.
@@ -786,7 +806,7 @@ async def trace_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Catch-all so no handler exception is swallowed silently."""
-    LOGGER.exception("Unhandled exception while processing update: %s", update, exc_info=context.error)
+    LOGGER.exception("Unhandled exception user_id=%s", getattr(getattr(update, "effective_user", None), "id", None), exc_info=context.error)
 
 
 async def post_init(application: Application) -> None:
@@ -879,6 +899,7 @@ def main():
     app.add_handler(CommandHandler("terms", terms_command))
     app.add_handler(CommandHandler("paysupport", paysupport_command))
     app.add_handler(CommandHandler("privacy", privacy_command))
+    app.add_handler(CommandHandler("delete", delete_command))
     app.add_handler(CommandHandler("feedback", feedback_command))
     app.add_handler(CommandHandler("feedbacks", feedbacks_command))
     app.add_handler(CallbackQueryHandler(feedback_prompt, pattern="^leave_feedback$"))
