@@ -363,9 +363,41 @@ def mark_payment_delivered(payment_id: int | None) -> None:
         )
 
 
+def _init_sales_events_table() -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_user_id INTEGER NOT NULL,
+                product TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sales_events_type_created ON sales_events(event_type, created_at)"
+        )
+
+
+def record_sales_event(telegram_user_id: int, product: str, event_type: str) -> int:
+    if event_type not in {"report_selected", "invoice_sent"}:
+        raise ValueError("Unknown sales event type")
+    _init_sales_events_table()
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """INSERT INTO sales_events (telegram_user_id, product, event_type, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (telegram_user_id, product, event_type, datetime.now(timezone.utc).isoformat()),
+        )
+        return cursor.lastrowid
+
+
 def get_sales_stats(now: datetime | None = None) -> dict:
     """Aggregate successful Telegram Stars payments for the admin dashboard."""
     _init_payments_table()
+    _init_sales_events_table()
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
@@ -404,6 +436,37 @@ def get_sales_stats(now: datetime | None = None) -> dict:
             """
         ).fetchall()
         result["products"] = [dict(row) for row in product_rows]
+
+        tracking_started = connection.execute(
+            "SELECT MIN(created_at) FROM sales_events"
+        ).fetchone()[0]
+        if tracking_started:
+            funnel_since = max(periods["30_days"].isoformat(), tracking_started)
+            event_counts = connection.execute(
+                """
+                SELECT event_type, COUNT(*) AS count
+                FROM sales_events WHERE created_at >= ? GROUP BY event_type
+                """,
+                (funnel_since,),
+            ).fetchall()
+            counts = {row["event_type"]: row["count"] for row in event_counts}
+            payment_row = connection.execute(
+                """
+                SELECT COUNT(*) AS paid,
+                       COALESCE(SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS delivered
+                FROM payments WHERE created_at >= ?
+                """,
+                (funnel_since,),
+            ).fetchone()
+            result["funnel"] = {
+                "since": funnel_since,
+                "selected": counts.get("report_selected", 0),
+                "invoices": counts.get("invoice_sent", 0),
+                "paid": payment_row["paid"],
+                "delivered": payment_row["delivered"],
+            }
+        else:
+            result["funnel"] = None
     return result
 
 

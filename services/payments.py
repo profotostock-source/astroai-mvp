@@ -8,7 +8,7 @@ from telegram import LabeledPrice, Update
 from telegram.ext import ContextTypes
 
 import config
-from database import get_pending_payment, save_payment
+from database import get_pending_payment, record_sales_event, save_payment
 
 PRODUCTS = {
     "natal": ("Inner Compass — натальний звіт", "Повний персональний PDF-звіт за натальною картою."),
@@ -41,6 +41,7 @@ async def send_product_invoice(message, user, context: ContextTypes.DEFAULT_TYPE
         prices=[LabeledPrice(label=f"Акційна ціна — {price} ⭐", amount=price)],
         start_parameter=f"inner-compass-{product}",
     )
+    record_sales_event(user.id, product, "invoice_sent")
 
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

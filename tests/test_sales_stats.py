@@ -42,3 +42,35 @@ def test_sales_stats_are_zero_without_payments(tmp_path, monkeypatch):
     stats = database.get_sales_stats(datetime(2026, 8, 25, tzinfo=timezone.utc))
     assert stats["all_time"] == {"sales": 0, "revenue_xtr": 0, "buyers": 0, "delivered": 0}
     assert stats["products"] == []
+
+
+def test_funnel_uses_events_since_tracking_started(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "funnel.db")
+    now = datetime(2026, 8, 25, 12, tzinfo=timezone.utc)
+    database.record_sales_event(1, "natal", "report_selected")
+    database.record_sales_event(1, "natal", "invoice_sent")
+    database.record_sales_event(2, "year", "report_selected")
+    payment_id = _save_payment(1, "natal", 99, "funnel-paid", now - timedelta(minutes=5))
+    database.mark_payment_delivered(payment_id)
+    with database.get_connection() as connection:
+        connection.execute(
+            "UPDATE sales_events SET created_at = ?",
+            ((now - timedelta(minutes=10)).isoformat(),),
+        )
+
+    funnel = database.get_sales_stats(now)["funnel"]
+
+    assert funnel["selected"] == 2
+    assert funnel["invoices"] == 1
+    assert funnel["paid"] == 1
+    assert funnel["delivered"] == 1
+
+
+def test_rejects_unknown_sales_event(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "invalid-event.db")
+    try:
+        database.record_sales_event(1, "natal", "unknown")
+    except ValueError as error:
+        assert str(error) == "Unknown sales event type"
+    else:
+        raise AssertionError("Unknown event type was accepted")

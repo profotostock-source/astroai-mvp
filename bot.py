@@ -8,7 +8,7 @@ from pathlib import Path
 import config
 from database import (
     delete_user_data, get_pending_payment, get_recent_feedback, get_sales_stats, get_user_profile, init_db, mark_payment_delivered,
-    save_feedback,
+    record_sales_event, save_feedback,
     save_together_report, upsert_user_profile,
 )
 from services.astrology import AstrologyError, calculate_natal_chart
@@ -467,6 +467,18 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for product in stats["products"]:
             name = labels.get(product["product"], product["product"])
             lines.append(f"• {name}: {product['sales']} · {product['revenue_xtr']} ⭐")
+    funnel = stats["funnel"]
+    if funnel:
+        invoice_rate = funnel["invoices"] / funnel["selected"] * 100 if funnel["selected"] else 0
+        payment_rate = funnel["paid"] / funnel["invoices"] * 100 if funnel["invoices"] else 0
+        delivery_rate = funnel["delivered"] / funnel["paid"] * 100 if funnel["paid"] else 0
+        lines.extend([
+            "", "Воронка (до 30 днів):",
+            f"Обрано звіт: {funnel['selected']}",
+            f"Надіслано рахунків: {funnel['invoices']} · {invoice_rate:.1f}%",
+            f"Оплачено: {funnel['paid']} · {payment_rate:.1f}%",
+            f"Доставлено: {funnel['delivered']} · {delivery_rate:.1f}%",
+        ])
     await update.message.reply_text("\n".join(lines))
 
 
@@ -643,6 +655,7 @@ async def _dispatch_paid_report(product, message, user, context, payment_id=None
 
 
 async def _request_or_deliver(product, message, user, context):
+    record_sales_event(user.id, product, "report_selected")
     pending = get_pending_payment(user.id, product)
     if pending:
         await message.reply_text("Знайшла вже оплачене замовлення. Генерую звіт без повторної оплати.")
