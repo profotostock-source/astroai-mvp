@@ -1,7 +1,7 @@
 import logging
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -361,6 +361,50 @@ def mark_payment_delivered(payment_id: int | None) -> None:
             "UPDATE payments SET delivered_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), payment_id),
         )
+
+
+def get_sales_stats(now: datetime | None = None) -> dict:
+    """Aggregate successful Telegram Stars payments for the admin dashboard."""
+    _init_payments_table()
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    periods = {
+        "today": current.replace(hour=0, minute=0, second=0, microsecond=0),
+        "7_days": current.replace(microsecond=0) - timedelta(days=7),
+        "30_days": current.replace(microsecond=0) - timedelta(days=30),
+    }
+
+    with get_connection() as connection:
+        result = {}
+        for name, since in periods.items():
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS sales, COALESCE(SUM(amount_xtr), 0) AS revenue_xtr
+                FROM payments WHERE created_at >= ?
+                """,
+                (since.isoformat(),),
+            ).fetchone()
+            result[name] = dict(row)
+
+        all_time = connection.execute(
+            """
+            SELECT COUNT(*) AS sales, COALESCE(SUM(amount_xtr), 0) AS revenue_xtr,
+                   COUNT(DISTINCT CASE WHEN telegram_user_id != 0 THEN telegram_user_id END) AS buyers,
+                   COALESCE(SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS delivered
+            FROM payments
+            """
+        ).fetchone()
+        result["all_time"] = dict(all_time)
+        product_rows = connection.execute(
+            """
+            SELECT product, COUNT(*) AS sales, COALESCE(SUM(amount_xtr), 0) AS revenue_xtr
+            FROM payments GROUP BY product ORDER BY sales DESC, product
+            """
+        ).fetchall()
+        result["products"] = [dict(row) for row in product_rows]
+    return result
 
 
 def _init_feedback_table() -> None:

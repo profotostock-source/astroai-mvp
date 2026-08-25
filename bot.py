@@ -7,7 +7,7 @@ from pathlib import Path
 
 import config
 from database import (
-    delete_user_data, get_pending_payment, get_recent_feedback, get_user_profile, init_db, mark_payment_delivered,
+    delete_user_data, get_pending_payment, get_recent_feedback, get_sales_stats, get_user_profile, init_db, mark_payment_delivered,
     save_feedback,
     save_together_report, upsert_user_profile,
 )
@@ -436,6 +436,39 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             date_text = transaction.date.astimezone().strftime("%d.%m.%Y %H:%M")
             lines.append(f"{date_text} — {sign}{transaction.amount} ⭐")
     await update.message.reply_text("\n".join(lines))
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show sales analytics only to configured owners."""
+    user = update.effective_user
+    if not user or user.id not in config.ADMIN_USER_IDS:
+        await update.message.reply_text("Ця команда доступна лише власнику бота.")
+        return
+    try:
+        stats = get_sales_stats()
+    except Exception:
+        LOGGER.exception("Failed to load sales stats for owner %s", user.id)
+        await update.message.reply_text("Не вдалося отримати аналітику продажів. Спробуйте ще раз трохи пізніше.")
+        return
+
+    labels = {
+        "natal": "Натальний звіт",
+        "year": "Прогноз на рік",
+        "together": "Звіт для пари",
+    }
+    lines = ["📊 Продажі Inner Compass", ""]
+    periods = (("Сьогодні (UTC)", "today"), ("7 днів", "7_days"), ("30 днів", "30_days"), ("Увесь час", "all_time"))
+    for label, key in periods:
+        period = stats[key]
+        lines.append(f"{label}: {period['sales']} · {period['revenue_xtr']} ⭐")
+    all_time = stats["all_time"]
+    lines.extend(["", f"Унікальних покупців: {all_time['buyers']}", f"Звітів доставлено: {all_time['delivered'] or 0}/{all_time['sales']}"])
+    if stats["products"]:
+        lines.extend(["", "За продуктами:"])
+        for product in stats["products"]:
+            name = labels.get(product["product"], product["product"])
+            lines.append(f"• {name}: {product['sales']} · {product['revenue_xtr']} ⭐")
+    await update.message.reply_text("\n".join(lines))
+
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -905,6 +938,7 @@ def main():
     app.add_handler(CallbackQueryHandler(feedback_prompt, pattern="^leave_feedback$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_feedback), group=1)
     app.add_handler(CommandHandler("balance", balance_command))
+    app.add_handler(CommandHandler("stats", stats_command))
 
     app.add_error_handler(on_error)
 
