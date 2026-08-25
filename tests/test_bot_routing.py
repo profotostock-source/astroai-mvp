@@ -38,3 +38,10 @@ def test_all_product_handlers_are_callable():
         "start_together",
     ]
     assert all(callable(getattr(bot, name)) for name in names)
+
+
+def test_start_source_validation():
+    assert bot.extract_start_source(["Landing_Meta_A"]) == "landing_meta_a"
+    assert bot.extract_start_source([]) is None
+    assert bot.extract_start_source(["bad source!"]) is None
+    assert bot.extract_start_source(["x" * 65]) is None

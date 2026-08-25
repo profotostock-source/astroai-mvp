@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import logging
@@ -8,7 +9,7 @@ from pathlib import Path
 import config
 from database import (
     delete_user_data, get_pending_payment, get_recent_feedback, get_sales_stats, get_user_profile, init_db, mark_payment_delivered,
-    record_sales_event, save_feedback,
+    record_sales_event, save_acquisition_source, save_feedback,
     save_together_report, upsert_user_profile,
 )
 from services.astrology import AstrologyError, calculate_natal_chart
@@ -60,6 +61,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 TOKEN = config.TELEGRAM_BOT_TOKEN
+REPORT_GENERATION_LIMIT = asyncio.Semaphore(2)
 
 NAME, BIRTH_DATE, BIRTH_TIME, BIRTH_CITY, CONFIRMATION = range(5)
 TOGETHER_NAME, TOGETHER_DATE, TOGETHER_TIME_KNOWN, TOGETHER_TIME, TOGETHER_PLACE, TOGETHER_CONFIRM = range(5, 11)
@@ -145,7 +147,16 @@ async def ask_name_question(message):
     )
 
 
+def extract_start_source(args: list[str]) -> str | None:
+    if not args:
+        return None
+    source = args[0].strip().lower()
+    return source if re.fullmatch(r"[a-z0-9_-]{1,64}", source) else None
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    source = extract_start_source(context.args) or "organic"
+    save_acquisition_source(update.effective_user.id, source)
     await ask_name_question(update.message)
     return NAME
 
@@ -479,6 +490,13 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Оплачено: {funnel['paid']} · {payment_rate:.1f}%",
             f"Доставлено: {funnel['delivered']} · {delivery_rate:.1f}%",
         ])
+    if stats["sources"]:
+        lines.extend(["", "Джерела залучення:"])
+        for source in stats["sources"][:10]:
+            lines.append(
+                f"• {source['source']}: {source['users']} корист. · "
+                f"{source['sales']} оплат · {source['revenue_xtr']} ⭐"
+            )
     await update.message.reply_text("\n".join(lines))
 
 
@@ -539,7 +557,8 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
     await context.bot.send_chat_action(chat_id=message.chat_id, action=ChatAction.UPLOAD_DOCUMENT)
 
     try:
-        astrology_data = calculate_natal_chart(saved_profile)
+        async with REPORT_GENERATION_LIMIT:
+            astrology_data = await asyncio.to_thread(calculate_natal_chart, saved_profile)
     except AstrologyError:
         LOGGER.exception("Natal chart calculation failed for Telegram user %s", user.id)
         await notice.edit_text(
@@ -554,7 +573,8 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     try:
-        report_path = generate_report(saved_profile, user.id, astrology_data)
+        async with REPORT_GENERATION_LIMIT:
+            report_path = await asyncio.to_thread(generate_report, saved_profile, user.id, astrology_data)
     except PDFGenerationError:
         LOGGER.exception("Failed to generate report for Telegram user %s", user.id)
         await notice.edit_text(
@@ -623,8 +643,9 @@ async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE)
     saved = get_user_profile(user.id)
     notice = await message.reply_text("Готую річний звіт. Це може тривати до хвилини.")
     try:
-        chart = calculate_natal_chart(saved)
-        path = generate_year_report(saved, user.id, chart)
+        async with REPORT_GENERATION_LIMIT:
+            chart = await asyncio.to_thread(calculate_natal_chart, saved)
+            path = await asyncio.to_thread(generate_year_report, saved, user.id, chart)
         LOGGER.info("Sending Year PDF to Telegram user %s: %s bytes", user.id, path.stat().st_size)
         with open(path, "rb") as stream:
             await context.bot.send_document(
@@ -783,8 +804,14 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
          "birth_time": context.user_data["together_b_time"], "birthplace": context.user_data["together_b_place"]}
     notice = await message.reply_text("Готую звіт для пари. Це може тривати до хвилини.")
     try:
-        chart_a, chart_b = calculate_natal_chart(a), calculate_natal_chart(b)
-        path = generate_together_report(profile_a=a, profile_b=b, telegram_user_id=user.id, chart_a=chart_a, chart_b=chart_b)
+        async with REPORT_GENERATION_LIMIT:
+            chart_a = await asyncio.to_thread(calculate_natal_chart, a)
+            chart_b = await asyncio.to_thread(calculate_natal_chart, b)
+            path = await asyncio.to_thread(
+                generate_together_report,
+                profile_a=a, profile_b=b, telegram_user_id=user.id,
+                chart_a=chart_a, chart_b=chart_b,
+            )
         save_together_report(owner_user_id=user.id,
             person_a_name=a["name"], person_a_birth_date=a["birth_date"], person_a_birth_time=a["birth_time"], person_a_birthplace=a["birthplace"], person_a_birth_time_known=bool(chart_a.get("birth_time_known")),
             person_b_name=b["name"], person_b_birth_date=b["birth_date"], person_b_birth_time=b["birth_time"], person_b_birthplace=b["birthplace"], person_b_birth_time_known=bool(chart_b.get("birth_time_known")), report_path=str(path))
@@ -918,7 +945,7 @@ def main():
     together_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(start_together, pattern="^report_type_together$"),
-            MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback),
+            MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback, block=False),
         ],
         states={
             TOGETHER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_name)],
@@ -926,7 +953,7 @@ def main():
             TOGETHER_TIME_KNOWN: [CallbackQueryHandler(together_time_known, pattern="^together_time_")],
             TOGETHER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_time)],
             TOGETHER_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, together_place)],
-            TOGETHER_CONFIRM: [CallbackQueryHandler(together_confirm, pattern="^together_confirm_")],
+            TOGETHER_CONFIRM: [CallbackQueryHandler(together_confirm, pattern="^together_confirm_", block=False)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
@@ -935,7 +962,7 @@ def main():
     app.bot_data["paid_report_dispatch"] = _dispatch_paid_report
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(together_handler)
-    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(natal|year)$"))
+    app.add_handler(CallbackQueryHandler(handle_report_type, pattern="^report_type_(natal|year)$", block=False))
     # Also registered outside the conversation so they work for users who have
     # no active conversation state.
     app.add_handler(CommandHandler("profile", profile))

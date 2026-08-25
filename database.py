@@ -12,13 +12,15 @@ DB_PATH = DATA_DIR / "astroai.db"
 
 
 def get_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH, timeout=10)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
     return connection
 
 
 def init_db() -> None:
     with get_connection() as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS user_profiles (
@@ -53,6 +55,8 @@ def init_db() -> None:
 
     _init_together_table()
     _init_payments_table()
+    _init_sales_events_table()
+    _init_acquisition_sources_table()
     LOGGER.info("Database initialized at %s", DB_PATH)
 
 
@@ -394,10 +398,35 @@ def record_sales_event(telegram_user_id: int, product: str, event_type: str) -> 
         return cursor.lastrowid
 
 
+def _init_acquisition_sources_table() -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS acquisition_sources (
+                telegram_user_id INTEGER PRIMARY KEY,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def save_acquisition_source(telegram_user_id: int, source: str) -> None:
+    """Persist first-touch attribution for a Telegram user."""
+    _init_acquisition_sources_table()
+    with get_connection() as connection:
+        connection.execute(
+            """INSERT OR IGNORE INTO acquisition_sources
+               (telegram_user_id, source, created_at) VALUES (?, ?, ?)""",
+            (telegram_user_id, source, datetime.now(timezone.utc).isoformat()),
+        )
+
+
 def get_sales_stats(now: datetime | None = None) -> dict:
     """Aggregate successful Telegram Stars payments for the admin dashboard."""
     _init_payments_table()
     _init_sales_events_table()
+    _init_acquisition_sources_table()
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
@@ -467,6 +496,22 @@ def get_sales_stats(now: datetime | None = None) -> dict:
             }
         else:
             result["funnel"] = None
+
+        source_rows = connection.execute(
+            """
+            SELECT a.source,
+                   COUNT(*) AS users,
+                   COALESCE(SUM(p.sales), 0) AS sales,
+                   COALESCE(SUM(p.revenue_xtr), 0) AS revenue_xtr
+            FROM acquisition_sources a
+            LEFT JOIN (
+                SELECT telegram_user_id, COUNT(*) AS sales, SUM(amount_xtr) AS revenue_xtr
+                FROM payments WHERE telegram_user_id != 0 GROUP BY telegram_user_id
+            ) p ON p.telegram_user_id = a.telegram_user_id
+            GROUP BY a.source ORDER BY sales DESC, users DESC, a.source
+            """
+        ).fetchall()
+        result["sources"] = [dict(row) for row in source_rows]
     return result
 
 
@@ -511,10 +556,14 @@ def delete_user_data(telegram_user_id: int) -> None:
     _init_together_table()
     _init_payments_table()
     _init_feedback_table()
+    _init_sales_events_table()
+    _init_acquisition_sources_table()
     with get_connection() as connection:
         connection.execute("DELETE FROM user_profiles WHERE telegram_user_id = ?", (telegram_user_id,))
         connection.execute("DELETE FROM together_reports WHERE owner_user_id = ?", (telegram_user_id,))
         connection.execute("DELETE FROM feedback WHERE telegram_user_id = ?", (telegram_user_id,))
+        connection.execute("DELETE FROM sales_events WHERE telegram_user_id = ?", (telegram_user_id,))
+        connection.execute("DELETE FROM acquisition_sources WHERE telegram_user_id = ?", (telegram_user_id,))
         rows = connection.execute(
             "SELECT id FROM payments WHERE telegram_user_id = ?", (telegram_user_id,)
         ).fetchall()

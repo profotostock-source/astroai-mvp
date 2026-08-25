@@ -8,6 +8,8 @@ def test_delete_user_data_removes_profile_and_anonymizes_payment(tmp_path, monke
     database.init_db()
     database.upsert_user_profile(42, "person", "Test", "01.01.1990", "12:00", "Kyiv")
     database.save_feedback(42, "person", "Private feedback")
+    database.record_sales_event(42, "natal", "report_selected")
+    database.save_acquisition_source(42, "meta_test")
     payment_id = database.save_payment(42, "natal", 99, "inner_compass:natal:42", "charge-private")
     assert payment_id
 
@@ -16,5 +18,7 @@ def test_delete_user_data_removes_profile_and_anonymizes_payment(tmp_path, monke
     assert database.get_user_profile(42) is None
     with sqlite3.connect(database.DB_PATH) as connection:
         assert connection.execute("SELECT count(*) FROM feedback WHERE telegram_user_id=42").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM sales_events WHERE telegram_user_id=42").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM acquisition_sources WHERE telegram_user_id=42").fetchone()[0] == 0
         payment = connection.execute("SELECT telegram_user_id, invoice_payload FROM payments WHERE id=?", (payment_id,)).fetchone()
     assert payment == (0, f"deleted:{payment_id}")

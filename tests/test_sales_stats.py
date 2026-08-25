@@ -74,3 +74,18 @@ def test_rejects_unknown_sales_event(tmp_path, monkeypatch):
         assert str(error) == "Unknown sales event type"
     else:
         raise AssertionError("Unknown event type was accepted")
+
+
+def test_first_touch_attribution_and_source_sales(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "attribution.db")
+    database.save_acquisition_source(10, "meta_a")
+    database.save_acquisition_source(10, "meta_b")
+    database.save_acquisition_source(20, "organic")
+    database.save_payment(10, "natal", 99, "inner_compass:natal:10", "attributed-charge")
+
+    stats = database.get_sales_stats()
+
+    assert stats["sources"] == [
+        {"source": "meta_a", "users": 1, "sales": 1, "revenue_xtr": 99},
+        {"source": "organic", "users": 1, "sales": 0, "revenue_xtr": 0},
+    ]
