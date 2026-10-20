@@ -9,7 +9,7 @@ from pathlib import Path
 import config
 from database import (
     delete_user_data, get_pending_payment, get_recent_feedback, get_sales_stats, get_user_profile, init_db, mark_payment_delivered,
-    record_sales_event, save_acquisition_source, save_feedback,
+    record_sales_event, save_acquisition_source, save_feedback, save_rating, get_rating_stats,
     save_together_report, upsert_user_profile,
 )
 from services.astrology import AstrologyError, calculate_natal_chart
@@ -368,10 +368,44 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def get_feedback_keyboard() -> InlineKeyboardMarkup:
+RATING_QUESTION = "Наскільки точно звіт описує вас? Оцініть від 1 до 10 👇"
+LOW_RATING_THRESHOLD = 7
+
+
+def get_feedback_keyboard(product: str = "natal") -> InlineKeyboardMarkup:
+    """Accuracy rating 1-10 (validation metric) plus free-text feedback."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💬 Залишити відгук", callback_data="leave_feedback")]
+        [InlineKeyboardButton(str(n), callback_data=f"rate:{product}:{n}") for n in range(1, 6)],
+        [InlineKeyboardButton(str(n), callback_data=f"rate:{product}:{n}") for n in range(6, 11)],
+        [InlineKeyboardButton("💬 Залишити відгук", callback_data="leave_feedback")],
     ])
+
+
+async def rating_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        _, product, raw_score = query.data.split(":")
+        score = int(raw_score)
+        save_rating(update.effective_user.id, product, score)
+    except Exception:
+        LOGGER.exception("Failed to save rating %r for user %s", query.data, update.effective_user.id)
+        await query.answer("Не вдалося зберегти оцінку. Спробуйте ще раз.", show_alert=True)
+        return
+    await query.answer(f"Ваша оцінка: {score}/10")
+    try:
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💬 Залишити відгук", callback_data="leave_feedback")]
+        ]))
+    except Exception:
+        LOGGER.warning("Could not update rating keyboard for user %s", update.effective_user.id)
+    if score <= LOW_RATING_THRESHOLD:
+        context.user_data["awaiting_feedback"] = True
+        await query.message.reply_text(
+            f"Дякуємо за чесну оцінку ({score}/10). Що саме не збіглося з вами? "
+            "Напишіть одним повідомленням — це допоможе зробити звіти точнішими."
+        )
+    else:
+        await query.message.reply_text(f"Дякуємо за оцінку {score}/10 💛")
 
 
 async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -497,6 +531,18 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• {source['source']}: {source['users']} корист. · "
                 f"{source['sales']} оплат · {source['revenue_xtr']} ⭐"
             )
+    try:
+        ratings = get_rating_stats()
+    except Exception:
+        LOGGER.exception("Failed to load rating stats")
+        ratings = None
+    if ratings and ratings["total"]["votes"]:
+        def rating_line(row):
+            share = row["high"] / row["votes"] * 100
+            return f"{row['votes']} оцінок · середня {row['avg_score']:.1f} · 8+: {share:.0f}%"
+        lines.extend(["", "🎯 Точність (ціль: 80% оцінок 8+):", f"Усього: {rating_line(ratings['total'])}"])
+        for row in ratings["products"]:
+            lines.append(f"• {labels.get(row['product'], row['product'])}: {rating_line(row)}")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -603,8 +649,8 @@ async def deliver_report(message, user, context: ContextTypes.DEFAULT_TYPE) -> N
             await message.reply_document(
                 document=report_file,
                 filename=report_path.name,
-                caption="Ваш персональний звіт готовий.",
-                reply_markup=get_feedback_keyboard(),
+                caption=f"Ваш персональний звіт готовий.\n\n{RATING_QUESTION}",
+                reply_markup=get_feedback_keyboard("natal"),
             )
     except Exception:
         LOGGER.exception("Failed to deliver PDF for Telegram user %s", user.id)
@@ -650,7 +696,7 @@ async def deliver_year_report(message, user, context: ContextTypes.DEFAULT_TYPE)
         with open(path, "rb") as stream:
             await context.bot.send_document(
                 chat_id=message.chat_id, document=stream, filename=path.name,
-                caption="Ваш річний звіт готовий.", reply_markup=get_feedback_keyboard(), read_timeout=120, write_timeout=120, connect_timeout=30,
+                caption=f"Ваш річний звіт готовий.\n\n{RATING_QUESTION}", reply_markup=get_feedback_keyboard("year"), read_timeout=120, write_timeout=120, connect_timeout=30,
             )
         LOGGER.info("Year PDF delivered to Telegram user %s", user.id)
         await notice.delete()
@@ -819,7 +865,7 @@ async def deliver_together_report(message, user, context: ContextTypes.DEFAULT_T
         with open(path, "rb") as stream:
             await context.bot.send_document(
                 chat_id=message.chat_id, document=stream, filename=path.name,
-                caption="Ваш звіт для пари готовий.", reply_markup=get_feedback_keyboard(), read_timeout=120, write_timeout=120, connect_timeout=30,
+                caption=f"Ваш звіт для пари готовий.\n\n{RATING_QUESTION}", reply_markup=get_feedback_keyboard("together"), read_timeout=120, write_timeout=120, connect_timeout=30,
             )
         LOGGER.info("Together PDF delivered to Telegram user %s", user.id)
         await notice.delete()
@@ -976,6 +1022,7 @@ def main():
     app.add_handler(CommandHandler("feedback", feedback_command))
     app.add_handler(CommandHandler("feedbacks", feedbacks_command))
     app.add_handler(CallbackQueryHandler(feedback_prompt, pattern="^leave_feedback$"))
+    app.add_handler(CallbackQueryHandler(rating_callback, pattern=r"^rate:(natal|year|together):([1-9]|10)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_feedback), group=1)
     app.add_handler(CommandHandler("balance", balance_command))
     app.add_handler(CommandHandler("stats", stats_command))
