@@ -551,6 +551,50 @@ def get_recent_feedback(limit: int = 10) -> list[dict]:
         ).fetchall()
     return [dict(row) for row in rows]
 
+def _init_ratings_table() -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS report_ratings (
+                telegram_user_id INTEGER NOT NULL,
+                product TEXT NOT NULL,
+                score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 10),
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (telegram_user_id, product)
+            )
+            """
+        )
+
+
+def save_rating(telegram_user_id: int, product: str, score: int) -> None:
+    """Store one accuracy score per user and product; a re-vote replaces the old one."""
+    if not 1 <= score <= 10:
+        raise ValueError("score must be between 1 and 10")
+    _init_ratings_table()
+    with get_connection() as connection:
+        connection.execute(
+            """INSERT INTO report_ratings (telegram_user_id, product, score, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(telegram_user_id, product)
+               DO UPDATE SET score = excluded.score, created_at = excluded.created_at""",
+            (telegram_user_id, product, score, datetime.now(timezone.utc).isoformat()),
+        )
+
+
+def get_rating_stats() -> dict:
+    """Validation metric: average score and share of 8+ overall and per product."""
+    _init_ratings_table()
+    query = """SELECT {group} COUNT(*) AS votes, AVG(score) AS avg_score,
+                      SUM(CASE WHEN score >= 8 THEN 1 ELSE 0 END) AS high
+               FROM report_ratings {tail}"""
+    with get_connection() as connection:
+        total = dict(connection.execute(query.format(group="", tail="")).fetchone())
+        rows = connection.execute(
+            query.format(group="product,", tail="GROUP BY product ORDER BY votes DESC")
+        ).fetchall()
+    return {"total": total, "products": [dict(row) for row in rows]}
+
+
 def delete_user_data(telegram_user_id: int) -> None:
     """Delete profile/report data and anonymize payment rows for accounting."""
     _init_together_table()
@@ -558,7 +602,9 @@ def delete_user_data(telegram_user_id: int) -> None:
     _init_feedback_table()
     _init_sales_events_table()
     _init_acquisition_sources_table()
+    _init_ratings_table()
     with get_connection() as connection:
+        connection.execute("DELETE FROM report_ratings WHERE telegram_user_id = ?", (telegram_user_id,))
         connection.execute("DELETE FROM user_profiles WHERE telegram_user_id = ?", (telegram_user_id,))
         connection.execute("DELETE FROM together_reports WHERE owner_user_id = ?", (telegram_user_id,))
         connection.execute("DELETE FROM feedback WHERE telegram_user_id = ?", (telegram_user_id,))
